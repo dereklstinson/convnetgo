@@ -6,7 +6,7 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor) {
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
 
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y utput batch
+	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y output batch
 		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
 
 			s0 := -c.padding[0]
