@@ -10,13 +10,13 @@ type Tensor struct {
 	nhwc    bool
 }
 
-const maxdimsize = 8
+const maxdimsize = 4
 const mindimsize = 4
 
-//CreateTensor32 creates a tensor according to the values passed. If len(dims) not >=4 and <=8 an error will return!
+//CreateTensor creates a tensor according to the values passed. If len(dims) not ==4 an error will return!
 //f64 is a place holder only thing available is float32
 func CreateTensor(dims []int, NHWC bool) (*Tensor, error) {
-	if len(dims) < 4 || len(dims) > 8 {
+	if len(dims) < 4 || len(dims) > 4 {
 		return nil, errors.New("Not a valid length of dims")
 	}
 
@@ -43,6 +43,25 @@ func (t *Tensor) Get(dimlcoation []int) (value float32) {
 	value = t.f32data[location]
 	return value
 }
+
+//SetAll sets all the elments in t to value.
+func (t *Tensor) SetAll(value float32) {
+	for i := range t.f32data {
+		t.f32data[i] = value
+	}
+}
+
+//LoadFromSlice will load from values into the tensor. It starts at zero til the length of values.
+//If values is longer than the volume of the tensor an error will return.
+func (t *Tensor) LoadFromSlice(values []float32) (err error) {
+	if len(values) > len(t.f32data) {
+		return errors.New("values slice larger than tensor volume")
+	}
+	for i := range values {
+		t.f32data[i] = values[i]
+	}
+	return nil
+}
 func findrecursivelocation(dims, stride []int, val int) (location int) {
 	if len(dims) == 1 {
 		val += dims[0] * stride[0]
@@ -51,6 +70,18 @@ func findrecursivelocation(dims, stride []int, val int) (location int) {
 	}
 	val += dims[0] * stride[0]
 	return findrecursivelocation(dims[1:], stride[1:], val)
+}
+func comparedims(xdims, ydims []int) bool {
+	if len(xdims) != len(ydims) {
+		return false
+	}
+	for i := range xdims {
+		if xdims[i] != ydims[i] {
+			return false
+		}
+
+	}
+	return true
 }
 
 //findvolume will save us a lot of trouble.

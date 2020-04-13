@@ -68,6 +68,74 @@ func divideup(num, den int) int {
 	return num / den
 }
 
+//BackwardData does the backward data operation
+//dx stores gradients from x in forward propagation. (out)
+//w is weights (in)
+//dy are gradients stored from layers output (in)
+func (c *Convolution) BackwardData(dx, w, dy *Tensor) (err error) {
+	if len(dx.dims) != len(w.dims) || len(dx.dims) != len(dy.dims) {
+		return errors.New("x, w,y need to be the same length")
+	}
+	if len(dx.dims) < mindimsize || len(dx.dims) > maxdimsize {
+		return fmt.Errorf("length of x,w,y need to be between %d and %d", mindimsize, maxdimsize)
+	}
+	if len(dx.dims)-2 != len(c.stride) {
+		return errors.New("convolution stride,dilation,and padding need to be length of x,w,y -2")
+	}
+	switch c.nhwc {
+	case true:
+		switch len(dx.dims) {
+		case 4:
+			c.backwarddatatNHWC4d(dx, w, dy)
+		default:
+			return errors.New("Unsupported Number of Tensor Dims")
+		}
+	case false:
+		switch len(dx.dims) {
+		case 4:
+			c.backwarddataNCHW4d(dx, w, dy)
+		default:
+			return errors.New("Unsupported Number of Tensor Dims")
+		}
+
+	}
+
+	return nil
+
+}
+func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor) (err error) {
+	if len(x.dims) != len(dw.dims) || len(x.dims) != len(dy.dims) {
+		return errors.New("x, w,y need to be the same length")
+	}
+	if len(x.dims) < mindimsize || len(x.dims) > maxdimsize {
+		return fmt.Errorf("length of x,w,y need to be between %d and %d", mindimsize, maxdimsize)
+	}
+	if len(x.dims)-2 != len(c.stride) {
+		return errors.New("convolution stride,dilation,and padding need to be length of x,w,y -2")
+	}
+	switch c.nhwc {
+	case true:
+		switch len(x.dims) {
+		case 4:
+			c.backwardfilterNHWC4d(x, dw, db, dy)
+		default:
+			return errors.New("Unsupported Number of Tensor Dims")
+		}
+	case false:
+		switch len(x.dims) {
+		case 4:
+			c.backwardfilterNCHW4d(x, dw, db, dy)
+		default:
+			return errors.New("Unsupported Number of Tensor Dims")
+		}
+
+	}
+
+	return nil
+
+}
+
+//Forward is the forward propagation
 func (c *Convolution) Forward(x, w, wb, y *Tensor) (err error) {
 	if len(x.dims) != len(w.dims) || len(x.dims) != len(y.dims) {
 		return errors.New("x, w,y need to be the same length")
@@ -84,14 +152,8 @@ func (c *Convolution) Forward(x, w, wb, y *Tensor) (err error) {
 		switch len(x.dims) {
 		case 4:
 			c.forwardNCHW4d(x, w, wb, y)
-		case 5:
-			c.forwardNCHW5d(x, w, wb, y)
-		case 6:
-			c.forwardNCHW6d(x, w, wb, y)
-		case 7:
-			c.forwardNCHW7d(x, w, wb, y)
-		case 8:
-			c.forwardNCHW8d(x, w, wb, y)
+		default:
+			return errors.New("Unsupported Number of Tensor Dims")
 		}
 	}
 

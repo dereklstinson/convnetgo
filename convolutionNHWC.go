@@ -1,39 +1,47 @@
 package dnn
 
-import "sync"
+import (
+	"sync"
+)
 
-func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor) {
+func (c *Convolution) forwardNHWC4d(x, w, wb, y *Tensor) {
+	//formated the code to look like nchw where n is batch for input tensors
+
+	//n is number of feature maps for weights
+	//n is batch for input and output tensors
+	//h is height
+	//w is width
+	//c is channel
 	var wg sync.WaitGroup
-	//	var mux sync.RWMutex
 
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y output batch
-		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
-
-			s0 := -c.padding[0]
-			wg.Add(1)
-			go func(y0, y1, s0 int) {
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
-				//	mux.RLock()
-				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
+	dh := c.dilation[0]
+	dw := c.dilation[1]
+	for yn := 0; yn < x.dims[0]; yn++ { //x and y output batch
+		sh := -c.padding[0]
+		for yh := 0; yh < y.dims[1]; yh, sh = yh+1, sh+c.stride[0] { //output dims1
+			sw := -c.padding[1]
+			for yw := 0; yw < y.dims[2]; yw, sw = yw+1, sw+c.stride[1] { //output dim2
+				for yc := 0; yc < y.dims[3]; yc++ { //wn == yc so the number of feature maps equals the size of the output channel.
+					wg.Add(1)
+					go func(yn, yh, yw, yc, sh, sw, dh, dw int) {
+						var xn, wn int
+						xn = yn
+						wn = yc
 						var adder float32
-						for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-							x1 = w1
-							var x2 int
-							d0 := c.dilation[0]
-							d1 := c.dilation[1]
-							for w2 := 0; w2 < w.dims[2]; w2++ { //w dim
-								x2 = s0 + (w2 * d0)
-								if x2 >= 0 && x2 < x.dims[2] {
-									var x3 int
-									for w3 := 0; w3 < w.dims[3]; w3++ { // w dim1
-										x3 = s1 + (w3 * d1)
+						var xh int
+						for wh := 0; wh < w.dims[1]; wh++ { //w input feature maps for x and w
+							xh = sh + (wh * dh)
 
-										if x3 >= 0 && x3 < x.dims[3] {
-											adder += x.f32data[(x.stride[0]*x0)+(x.stride[1]*x1)+(x.stride[2]*x2)+x3] * w.f32data[(w.stride[0]*w0)+(w.stride[1]*w1)+(w.stride[2]*w2)+w3]
+							if xh >= 0 && xh < x.dims[1] {
+								var xw int
+								for ww := 0; ww < w.dims[2]; ww++ { //w dim
+									xw = sw + (ww * dw)
+
+									if xw >= 0 && xw < x.dims[2] {
+
+										for wc := 0; wc < w.dims[3]; wc++ {
+											adder += x.f32data[(x.stride[0]*xn)+(x.stride[1]*xh)+(x.stride[2]*xw)+wc] * //wc and xc are the same
+												w.f32data[(w.stride[0]*wn)+(w.stride[1]*wh)+(w.stride[2]*ww)+wc]
 										}
 									}
 
@@ -41,132 +49,134 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor) {
 
 							}
 						}
-						adder += wb.f32data[w0]
-						y.Set(adder, []int{y0, y1, y2, y3})
+						adder += wb.f32data[wn]             //wn is the output channel chich the bias gets add into it
+						y.Set(adder, []int{yn, yh, yw, yc}) //Set the output channel
+						wg.Done()
+					}(yn, yh, yw, yc, sh, sw, dh, dw)
 
-					}
 				}
-				//	mux.RUnlock()
-				wg.Done()
-			}(y0, y1, s0)
+			}
 
 		}
 
 	}
 	wg.Wait()
 }
-func (c *Convolution) backwardfilterNCHW4d(x, dw, dwb, dy *Tensor) {
+func (c *Convolution) backwardfilterNHWC4d(x, dw, dwb, dy *Tensor) {
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
+	dilh := c.dilation[0]
+	dilw := c.dilation[1]
+	for yn := 0; yn < x.dims[0]; yn++ { //x and y output batch
+		sh := -c.padding[0]
+		for yh := 0; yh < dy.dims[1]; yh, sh = yh+1, sh+c.stride[0] { //output dims1
+			sw := -c.padding[1]
+			for yw := 0; yw < dy.dims[2]; yw, sw = yw+1, sw+c.stride[1] { //output dim2
+				for yc := 0; yc < dy.dims[3]; yc++ { //wn == yc so the number of feature maps equals the size of the output channel.
+					wg.Add(1)
+					go func(yn, yh, yw, yc, sh, sw, dilh, dilw int) {
+						var xn, wn int
+						xn = yn
+						wn = yc
+						var xh int
 
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y output batch
-		for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
+						var grad = dy.Get([]int{yn, yh, yw, yc})
+						for wh := 0; wh < dw.dims[1]; wh++ { //w input feature maps for x and w
+							xh = sh + (wh * dilh)
 
-			wg.Add(1)
-			go func(y0, y1 int) {
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
-				s0 := -c.padding[0]
-				for y2 := 0; y2 < dy.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < dy.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-						var grad = dy.Get([]int{y0, y1, y2, y3})
+							if xh >= 0 && xh < x.dims[1] {
 
-						for w1 := 0; w1 < dw.dims[1]; w1++ { //w input feature maps for x and w
-							x1 = w1
-							var x2 int
-							d0 := c.dilation[0]
-							d1 := c.dilation[1]
+								var xw int
 
-							for w2 := 0; w2 < dw.dims[2]; w2++ { //w dim
-								x2 = s0 + (w2 * d0)
-								if x2 >= 0 && x2 < x.dims[2] {
-									mux.RLock()
-									var x3 int
-									for w3 := 0; w3 < dw.dims[3]; w3++ { // w dim1
-										x3 = s1 + (w3 * d1)
+								for ww := 0; ww < dw.dims[2]; ww++ { //w dim
+									xw = sw + (ww * dilw)
 
-										if x3 >= 0 && x3 < x.dims[3] {
-											dw.f32data[(dw.stride[0]*w0)+(dw.stride[1]*w1)+(dw.stride[2]*w2)+(dw.stride[3]*w3)] += grad * x.f32data[(x.stride[0]*x0)+(x.stride[1]*x1)+(x.stride[2]*x2)+x3]
+									if xw >= 0 && xw < x.dims[2] {
+										mux.Lock()
+										for wc := 0; wc < dw.dims[3]; wc++ {
+											dw.f32data[(dw.stride[0]*wn)+(dw.stride[1]*wh)+(dw.stride[2]*ww)+wc] +=
+												grad * x.f32data[(x.stride[0]*xn)+(x.stride[1]*xh)+(x.stride[2]*xw)+wc]
 										}
+										mux.Unlock()
 									}
-									mux.RUnlock()
+
 								}
 
 							}
 						}
-						mux.RLock()
-						dwb.f32data[w0] += grad
-						mux.RUnlock()
-					}
+						mux.Lock()
+						dwb.f32data[wn] += grad //wn is the output channel chich the bias gets add into it
+						mux.Unlock()
+						wg.Done()
+					}(yn, yh, yw, yc, sh, sw, dilh, dilw)
 				}
-
-				wg.Done()
-			}(y0, y1)
+			}
 
 		}
 
 	}
 	wg.Wait()
 }
-func (c *Convolution) backwarddataNCHW4d(dx, w, dy *Tensor) {
+func (c *Convolution) backwarddatatNHWC4d(dx, w, dy *Tensor) {
+
+	//formated the code to look like nchw where n is batch for input tensors
+	//n is number of feature maps for weights
+	//n is batch for input and output tensors
+	//h is height
+	//w is width
+	//c is channel
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
+	dilh := c.dilation[0]
+	dilw := c.dilation[1]
+	for yn := 0; yn < dy.dims[0]; yn++ { //x and y output batch
+		sh := -c.padding[0]
+		for yh := 0; yh < dy.dims[1]; yh, sh = yh+1, sh+c.stride[0] { //output dims1
+			sw := -c.padding[1]
+			for yw := 0; yw < dy.dims[2]; yw, sw = yw+1, sw+c.stride[1] { //output dim2
+				for yc := 0; yc < dy.dims[3]; yc++ { //wn == yc so the number of feature maps equals the size of the output channel.
+					wg.Add(1)
+					go func(yn, yh, yw, yc, sh, sw, dilh, dilw int) {
+						var xn, wn int
+						xn = yn
+						wn = yc
+						var grad = dy.Get([]int{yn, yh, yw, yc})
+						var xh int
+						for wh := 0; wh < w.dims[1]; wh++ { //w input feature maps for x and w
+							xh = sh + (wh * dilh)
 
-	for y0 := 0; y0 < dx.dims[0]; y0++ { //x and y output batch
-		for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
+							if xh >= 0 && xh < dx.dims[1] {
+								var xw int
+								for ww := 0; ww < w.dims[2]; ww++ { //w dim
+									xw = sw + (ww * dilw)
 
-			wg.Add(1)
-			go func(y0, y1 int) {
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
-				s0 := -c.padding[0]
-				for y2 := 0; y2 < dy.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < dy.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-						var grad = dy.Get([]int{y0, y1, y2, y3})
-						for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-							x1 = w1
-							var x2 int
-							d0 := c.dilation[0]
-							d1 := c.dilation[1]
-
-							for w2 := 0; w2 < w.dims[2]; w2++ { //w dim
-								x2 = s0 + (w2 * d0)
-								if x2 >= 0 && x2 < dx.dims[2] {
-									var x3 int
-									mux.RLock()
-									for w3 := 0; w3 < w.dims[3]; w3++ { // w dim1
-										x3 = s1 + (w3 * d1)
-
-										if x3 >= 0 && x3 < dx.dims[3] {
-
-											dx.f32data[(dx.stride[0]*x0)+(dx.stride[1]*x1)+(dx.stride[2]*x2)+x3] += grad * w.f32data[(w.stride[0]*w0)+(w.stride[1]*w1)+(w.stride[2]*w2)+w3]
+									if xw >= 0 && xw < dx.dims[2] {
+										mux.Lock()
+										for wc := 0; wc < w.dims[3]; wc++ {
+											dx.f32data[(dx.stride[0]*xn)+(dx.stride[1]*xh)+(dx.stride[2]*xw)+wc] +=
+												grad * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wh)+(w.stride[2]*ww)+wc]
 										}
+										mux.Unlock()
 									}
-									mux.RUnlock()
+
 								}
 
 							}
-
 						}
-
-					}
+						wg.Done()
+					}(yn, yh, yw, yc, sh, sw, dilh, dilw)
 				}
-
-				wg.Done()
-			}(y0, y1)
+			}
 
 		}
 
 	}
 	wg.Wait()
+
 }
 
 /*
-func (c *Convolution) forwardNCHW5dnew(x, w, wb, y *Tensor) {
+func (c *Convolution) forwardNHWC5dnew(x, w, wb, y *Tensor) {
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
 	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y utput batch
@@ -233,7 +243,7 @@ func (c *Convolution) forwardNCHW5dnew(x, w, wb, y *Tensor) {
 	}
 }
 
-func (c *Convolution) forwardNCHW5d(x, w, wb, y *Tensor) {
+func (c *Convolution) forwardNHWC5d(x, w, wb, y *Tensor) {
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
 
@@ -302,7 +312,7 @@ func (c *Convolution) forwardNCHW5d(x, w, wb, y *Tensor) {
 	wg.Wait()
 }
 
-func (c *Convolution) forwardNCHW6d(x, w, wb, y *Tensor) {
+func (c *Convolution) forwardNHWC6d(x, w, wb, y *Tensor) {
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
 
@@ -382,7 +392,7 @@ func (c *Convolution) forwardNCHW6d(x, w, wb, y *Tensor) {
 	wg.Wait()
 }
 
-func (c *Convolution) forwardNCHW7d(x, w, wb, y *Tensor) {
+func (c *Convolution) forwardNHWC7d(x, w, wb, y *Tensor) {
 
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
@@ -471,7 +481,7 @@ func (c *Convolution) forwardNCHW7d(x, w, wb, y *Tensor) {
 	wg.Wait()
 }
 
-func (c *Convolution) forwardNCHW8d(x, w, wb, y *Tensor) {
+func (c *Convolution) forwardNHWC8d(x, w, wb, y *Tensor) {
 
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
