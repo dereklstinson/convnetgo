@@ -5,15 +5,19 @@ import (
 	"fmt"
 )
 
+//Convolution contains the parameters that are used to do a convolution
 type Convolution struct {
 	padding, dilation, stride []int
 	set                       bool
 	nhwc                      bool
 }
 
+//CreateConvolution creates a convolution algo
 func CreateConvolution() *Convolution {
 	return &Convolution{}
 }
+
+//Set sets the convolution settings
 func (c *Convolution) Set(padding, dilation, stride []int, NHWC bool) error {
 	if len(padding) != len(dilation) || len(padding) != len(stride) {
 		return errors.New("length of padding dilation and stride need to be the same")
@@ -30,9 +34,13 @@ func (c *Convolution) Set(padding, dilation, stride []int, NHWC bool) error {
 	c.set = true
 	return nil
 }
+
+//Get gets the convolution settings
 func (c *Convolution) Get() (padding, dilation, stride []int) {
 	return c.padding, c.dilation, c.stride
 }
+
+//FindOutputDims finds the output dims of the convolution
 func (c *Convolution) FindOutputDims(x, w *Tensor) []int {
 	output := make([]int, len(x.dims))
 	if c.nhwc {
@@ -103,6 +111,8 @@ func (c *Convolution) BackwardData(dx, w, dy *Tensor) (err error) {
 	return nil
 
 }
+
+//BackwardFilter updates gradients from dy to dw and db.
 func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor) (err error) {
 	if len(x.dims) != len(dw.dims) || len(x.dims) != len(dy.dims) {
 		return errors.New("x, w,y need to be the same length")
@@ -135,7 +145,7 @@ func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor) (err error) {
 
 }
 
-//Forward is the forward propagation
+//Forward is the forward propagation.  Calcultions are stored in y
 func (c *Convolution) Forward(x, w, wb, y *Tensor) (err error) {
 	if len(x.dims) != len(w.dims) || len(x.dims) != len(y.dims) {
 		return errors.New("x, w,y need to be the same length")
