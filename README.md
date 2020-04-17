@@ -1,4 +1,8 @@
-# dnn
-Examples of operations used in CNNs and NNs.  Human Learning Machine Learning. 
+# convnetgo
+Examples of operations used in CNNs and NNs, Parallelized to boot.
 
-I found it hard to follow some neural network codes. I infact made my own 100% go 100% cpu based framework.  It was super ineffecient.  Here I am going to build working examples of the operations. Hopefully, we will get a significant boost in performance from what I originally wrote.
+
+This operations are parallelized per batch.  So for best results get larger batches.
+
+I will make single threaded operations, too.
+

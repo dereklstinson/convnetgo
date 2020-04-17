@@ -1,24 +1,26 @@
-package dnn
+package convnetgo
 
 import "sync"
 
-func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor) {
+func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor, alpha, beta float32) {
 	var wg sync.WaitGroup
 	//	var mux sync.RWMutex
 
 	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y output batch
-		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
+		wg.Add(1)
+		go func(y0 int) {
+			for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
 
-			s0 := -c.padding[0]
-			wg.Add(1)
-			go func(y0, y1, s0 int) {
+				s0 := -c.padding[0]
+
 				var w0, x0, x1 int
 				x0 = y0
 				w0 = y1
-				//	mux.RLock()
+
 				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
 					s1 := -c.padding[1]
 					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
+
 						var adder float32
 						for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
 							x1 = w1
@@ -42,16 +44,17 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor) {
 							}
 						}
 						adder += wb.f32data[w0]
+						//		previous := y.Get([]int{y0, y1, y2, y3})
+						//		previous = beta*previous + alpha*adder
 						y.Set(adder, []int{y0, y1, y2, y3})
 
 					}
 				}
 				//	mux.RUnlock()
-				wg.Done()
-			}(y0, y1, s0)
 
-		}
-
+			}
+			wg.Done()
+		}(y0)
 	}
 	wg.Wait()
 }
@@ -60,93 +63,100 @@ func (c *Convolution) backwardfilterNCHW4d(x, dw, dwb, dy *Tensor) {
 	var mux sync.RWMutex
 
 	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y output batch
-		for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
+		wg.Add(1)
 
-			wg.Add(1)
-			go func(y0, y1 int) {
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
+		go func(y0 int) {
+
+			dwzclone, err := dw.ZeroClone()
+			if err != nil {
+				panic(err)
+			}
+			dbclone, err := dwb.ZeroClone()
+			if err != nil {
+				panic(err)
+			}
+
+			for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
 				s0 := -c.padding[0]
 				for y2 := 0; y2 < dy.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
 					s1 := -c.padding[1]
 					for y3 := 0; y3 < dy.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-						var grad = dy.Get([]int{y0, y1, y2, y3})
 
-						for w1 := 0; w1 < dw.dims[1]; w1++ { //w input feature maps for x and w
+						x0 := y0
+						w0 := y1
+						d0 := c.dilation[0]
+						d1 := c.dilation[1]
+						var x1 int
+						var grad = dy.Get([]int{y0, y1, y2, y3})
+						for w1 := 0; w1 < dwb.dims[1]; w1++ { //w input feature maps for x and w
 							x1 = w1
 							var x2 int
-							d0 := c.dilation[0]
-							d1 := c.dilation[1]
-
-							for w2 := 0; w2 < dw.dims[2]; w2++ { //w dim
+							for w2 := 0; w2 < dwb.dims[2]; w2++ { //w dim
 								x2 = s0 + (w2 * d0)
 								if x2 >= 0 && x2 < x.dims[2] {
-									mux.RLock()
+									//mux.RLock()
 									var x3 int
-									for w3 := 0; w3 < dw.dims[3]; w3++ { // w dim1
+									for w3 := 0; w3 < dwb.dims[3]; w3++ { // w dim1
 										x3 = s1 + (w3 * d1)
 
 										if x3 >= 0 && x3 < x.dims[3] {
-											dw.f32data[(dw.stride[0]*w0)+(dw.stride[1]*w1)+(dw.stride[2]*w2)+(dw.stride[3]*w3)] += grad * x.f32data[(x.stride[0]*x0)+(x.stride[1]*x1)+(x.stride[2]*x2)+x3]
+											dwzclone.f32data[(dw.stride[0]*w0)+(dw.stride[1]*w1)+(dw.stride[2]*w2)+(dw.stride[3]*w3)] +=
+												grad * x.f32data[(x.stride[0]*x0)+(x.stride[1]*x1)+(x.stride[2]*x2)+x3]
 										}
 									}
-									mux.RUnlock()
+									//	mux.RUnlock()
 								}
 
 							}
 						}
-						mux.RLock()
-						dwb.f32data[w0] += grad
-						mux.RUnlock()
+						//	mux.RLock()
+						dbclone.f32data[w0] += grad
+						//	mux.RUnlock()
+
 					}
 				}
 
-				wg.Done()
-			}(y0, y1)
-
-		}
-
+			}
+			mux.Lock()
+			dw.Add(dw, dwzclone, 1, 1, 0)
+			dwb.Add(dwb, dbclone, 1, 1, 0)
+			mux.Unlock()
+			wg.Done()
+		}(y0)
 	}
 	wg.Wait()
 }
 func (c *Convolution) backwarddataNCHW4d(dx, w, dy *Tensor) {
 	var wg sync.WaitGroup
-	var mux sync.RWMutex
 
 	for y0 := 0; y0 < dx.dims[0]; y0++ { //x and y output batch
-		for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
-
-			wg.Add(1)
-			go func(y0, y1 int) {
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
+		wg.Add(1)
+		go func(y0 int) {
+			for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
 				s0 := -c.padding[0]
 				for y2 := 0; y2 < dy.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
 					s1 := -c.padding[1]
 					for y3 := 0; y3 < dy.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
+						x0 := y0
+						w0 := y1
+						d0 := c.dilation[0]
+						d1 := c.dilation[1]
+						var x1 int
 						var grad = dy.Get([]int{y0, y1, y2, y3})
 						for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
 							x1 = w1
 							var x2 int
-							d0 := c.dilation[0]
-							d1 := c.dilation[1]
-
 							for w2 := 0; w2 < w.dims[2]; w2++ { //w dim
 								x2 = s0 + (w2 * d0)
 								if x2 >= 0 && x2 < dx.dims[2] {
 									var x3 int
-									mux.RLock()
 									for w3 := 0; w3 < w.dims[3]; w3++ { // w dim1
 										x3 = s1 + (w3 * d1)
-
 										if x3 >= 0 && x3 < dx.dims[3] {
-
 											dx.f32data[(dx.stride[0]*x0)+(dx.stride[1]*x1)+(dx.stride[2]*x2)+x3] += grad * w.f32data[(w.stride[0]*w0)+(w.stride[1]*w1)+(w.stride[2]*w2)+w3]
 										}
 									}
-									mux.RUnlock()
+
 								}
 
 							}
@@ -156,11 +166,9 @@ func (c *Convolution) backwarddataNCHW4d(dx, w, dy *Tensor) {
 					}
 				}
 
-				wg.Done()
-			}(y0, y1)
-
-		}
-
+			}
+			wg.Done()
+		}(y0)
 	}
 	wg.Wait()
 }

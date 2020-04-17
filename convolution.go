@@ -1,4 +1,4 @@
-package dnn
+package convnetgo
 
 import (
 	"errors"
@@ -18,7 +18,7 @@ func CreateConvolution() *Convolution {
 }
 
 //Set sets the convolution settings
-func (c *Convolution) Set(padding, dilation, stride []int, NHWC bool) error {
+func (c *Convolution) Set(padding, stride, dilation []int, NHWC bool) error {
 	if len(padding) != len(dilation) || len(padding) != len(stride) {
 		return errors.New("length of padding dilation and stride need to be the same")
 	} else if len(padding) < mindimsize-2 || len(padding) > maxdimsize-2 {
@@ -80,7 +80,10 @@ func divideup(num, den int) int {
 //dx stores gradients from x in forward propagation. (out)
 //w is weights (in)
 //dy are gradients stored from layers output (in)
-func (c *Convolution) BackwardData(dx, w, dy *Tensor) (err error) {
+//alpha is for future work it has no function right now
+//if beta will multiply the previous values for dx by whatever beta is
+func (c *Convolution) BackwardData(dx, w, dy *Tensor, alpha, beta float32) (err error) {
+
 	if len(dx.dims) != len(w.dims) || len(dx.dims) != len(dy.dims) {
 		return errors.New("x, w,y need to be the same length")
 	}
@@ -89,6 +92,11 @@ func (c *Convolution) BackwardData(dx, w, dy *Tensor) (err error) {
 	}
 	if len(dx.dims)-2 != len(c.stride) {
 		return errors.New("convolution stride,dilation,and padding need to be length of x,w,y -2")
+	}
+	if beta == 0 {
+		dx.SetAll(0)
+	} else {
+		dx.MultAll(beta)
 	}
 	switch c.nhwc {
 	case true:
@@ -113,7 +121,8 @@ func (c *Convolution) BackwardData(dx, w, dy *Tensor) (err error) {
 }
 
 //BackwardFilter updates gradients from dy to dw and db.
-func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor) (err error) {
+//alpha is for future work. beta will multiply previous values of dw by beta before gradient is accumulated
+func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor, alpha, beta float32) (err error) {
 	if len(x.dims) != len(dw.dims) || len(x.dims) != len(dy.dims) {
 		return errors.New("x, w,y need to be the same length")
 	}
@@ -122,6 +131,13 @@ func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor) (err error) {
 	}
 	if len(x.dims)-2 != len(c.stride) {
 		return errors.New("convolution stride,dilation,and padding need to be length of x,w,y -2")
+	}
+	if beta == 0 {
+		dw.SetAll(0)
+		db.SetAll(0)
+	} else {
+		dw.MultAll(beta)
+		db.MultAll(beta)
 	}
 	switch c.nhwc {
 	case true:
@@ -146,7 +162,8 @@ func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor) (err error) {
 }
 
 //Forward is the forward propagation.  Calcultions are stored in y
-func (c *Convolution) Forward(x, w, wb, y *Tensor) (err error) {
+//alpha and beta are for future work. they don't have any function rightnow
+func (c *Convolution) Forward(x, w, wb, y *Tensor, alpha, beta float32) (err error) {
 	if len(x.dims) != len(w.dims) || len(x.dims) != len(y.dims) {
 		return errors.New("x, w,y need to be the same length")
 	}
@@ -157,11 +174,16 @@ func (c *Convolution) Forward(x, w, wb, y *Tensor) (err error) {
 		return errors.New("convolution stride,dilation,and padding need to be length of x,w,y -2")
 	}
 	if c.nhwc {
-
+		switch len(x.dims) {
+		case 4:
+			c.forwardNHWC4d(x, w, wb, y, alpha, beta)
+		default:
+			return errors.New("Unsupported Number of Tensor Dims")
+		}
 	} else {
 		switch len(x.dims) {
 		case 4:
-			c.forwardNCHW4d(x, w, wb, y)
+			c.forwardNCHW4d(x, w, wb, y, alpha, beta)
 		default:
 			return errors.New("Unsupported Number of Tensor Dims")
 		}

@@ -1,4 +1,4 @@
-package dnn
+package convnetgo
 
 import (
 	"errors"
@@ -12,7 +12,9 @@ import (
 //y is the output tensor (out)
 //
 //Batches are performed in parrallel
-func FullyConnectedForward(x, w, b, y *Tensor) error {
+//
+//alpha and beta have no functionality.
+func FullyConnectedForward(x, w, b, y *Tensor, alpha, beta float32) error {
 	nvol := findvolume(w.dims[1:])
 	xvol := findvolume(x.dims[1:])
 
@@ -30,21 +32,23 @@ func FullyConnectedForward(x, w, b, y *Tensor) error {
 		return errors.New("Bias size != to output/neuron size")
 	}
 	batchsize := x.dims[0]
-	batchstride := x.stride[0]
-
+	xbatchstride := x.stride[0]
+	ybatchstride := y.stride[0]
 	var wg sync.WaitGroup
 	for i := 0; i < batchsize; i++ {
 		wg.Add(1)
 		go func(i int) {
-			xyoffset := batchstride * i
+			yoffset := ybatchstride * i
+			xboffset := xbatchstride * i
 			for j := 0; j < neurons; j++ {
 				neuronoffset := w.stride[0] * j
 				var adder float32
 				for k := 0; k < xvol; k++ {
-					adder += w.f32data[neuronoffset+k] * x.f32data[xyoffset+k]
+
+					adder += w.f32data[neuronoffset+k] * x.f32data[xboffset+k]
 				}
 
-				y.f32data[xyoffset+j] = adder + b.f32data[neuronoffset]
+				y.f32data[yoffset+j] = adder + b.f32data[j]
 			}
 			wg.Done()
 		}(i)
@@ -60,7 +64,8 @@ func FullyConnectedForward(x, w, b, y *Tensor) error {
 //dy is are the gradients found for the output of this layer (out)
 //
 //Batches are done in parallel
-func FullyConnectedBackwardData(dx, w, dy *Tensor) error {
+//alpha has no functionality but beta will multiply the previous values of dx by beta before adding new gradients
+func FullyConnectedBackwardData(dx, w, dy *Tensor, alpha, beta float32) error {
 	nvol := findvolume(w.dims[1:])  //nvol is the size of the weights of each neuron
 	xvol := findvolume(dx.dims[1:]) //
 	if nvol != xvol {
@@ -71,19 +76,25 @@ func FullyConnectedBackwardData(dx, w, dy *Tensor) error {
 	if yvol != neurons {
 		return errors.New("Neuron outputs not matching y tensors volume")
 	}
-
+	if beta == 0 {
+		dx.SetAll(0)
+	} else {
+		dx.MultAll(beta)
+	}
 	batchsize := dx.dims[0]
-	batchstride := dx.stride[0]
+	xbatchstride := dx.stride[0]
+	ybatchstride := dy.stride[0]
 	var wg sync.WaitGroup
 	for i := 0; i < batchsize; i++ {
 		wg.Add(1)
 		go func(i int) {
-			xyoffset := batchstride * i
+			yoffset := ybatchstride * i
+			xoffset := xbatchstride * i
 			for j := 0; j < neurons; j++ {
 				neuronoffset := w.stride[0] * j
-				var grad = dy.f32data[xyoffset+j]
+				var grad = dy.f32data[yoffset+j]
 				for k := 0; k < xvol; k++ {
-					dx.f32data[xyoffset+k] += grad * w.f32data[neuronoffset+k]
+					dx.f32data[xoffset+k] += grad * w.f32data[neuronoffset+k]
 				}
 			}
 			wg.Done()
@@ -102,7 +113,9 @@ func FullyConnectedBackwardData(dx, w, dy *Tensor) error {
 //dy is are the gradients found for the output of this layer (out)
 //
 //Batches are done in parallel
-func FullyConnectedBackwardFilter(x, dw, db, dy *Tensor) error {
+//
+//alpha has no functionality but beta will multiply the previous values of dw,db by beta before adding new gradients
+func FullyConnectedBackwardFilter(x, dw, db, dy *Tensor, alpha, beta float32) error {
 	nvol := findvolume(dw.dims[1:])
 	xvol := findvolume(x.dims[1:])
 	if nvol != xvol {
@@ -117,22 +130,33 @@ func FullyConnectedBackwardFilter(x, dw, db, dy *Tensor) error {
 	if bvol != neurons {
 		return errors.New("Bias size != to output/neuron size")
 	}
+	if beta == 0 {
+		dw.SetAll(0)
+		db.SetAll(0)
+	} else {
+		dw.MultAll(beta)
+		dw.MultAll(beta)
+	}
 	batchsize := x.dims[0]
-	batchstride := x.stride[0]
-
+	xbatchstride := x.stride[0]
+	ybatchstride := dy.stride[0]
+	var mux sync.Mutex
 	var wg sync.WaitGroup
 	for i := 0; i < batchsize; i++ {
 		wg.Add(1)
 		go func(i int) {
-			xyoffset := batchstride * i
+			xoffset := xbatchstride * i
+			yoffset := ybatchstride * i
 			for j := 0; j < neurons; j++ {
 				neuronoffset := dw.stride[0] * j
-				var grad = dy.f32data[xyoffset+j]
+				var grad = dy.f32data[yoffset+j]
+				mux.Lock()
 				for k := 0; k < xvol; k++ {
-					dw.f32data[neuronoffset+k] += x.f32data[xyoffset+k] * grad
+					dw.f32data[neuronoffset+k] += x.f32data[xoffset+k] * grad
 
 				}
-				db.f32data[neuronoffset] += grad
+				mux.Unlock()
+				db.f32data[j] += grad
 			}
 			wg.Done()
 		}(i)
