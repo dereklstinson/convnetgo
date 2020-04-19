@@ -6,36 +6,36 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor, alpha, beta float32) {
 	var wg sync.WaitGroup
 	//	var mux sync.RWMutex
 
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y output batch
+	for yn := 0; yn < x.dims[0]; yn++ { //x and y output batch
 		wg.Add(1)
-		go func(y0 int) {
-			for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
+		go func(yn int) {
+			for yc := 0; yc < y.dims[1]; yc++ { // output feature maps for w and y
 
-				s0 := -c.padding[0]
+				sh := -c.padding[0]
 
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
+				var wn, xn, xc int
+				xn = yn
+				wn = yc
 
-				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
+				for yh := 0; yh < y.dims[2]; yh, sh = yh+1, sh+c.stride[0] { //output dimsw
+					sw := -c.padding[1]
+					for yw := 0; yw < y.dims[3]; yw, sw = yw+1, sw+c.stride[1] { //output dim2
 
 						var adder float32
-						for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-							x1 = w1
-							var x2 int
-							d0 := c.dilation[0]
-							d1 := c.dilation[1]
-							for w2 := 0; w2 < w.dims[2]; w2++ { //w dim
-								x2 = s0 + (w2 * d0)
-								if x2 >= 0 && x2 < x.dims[2] {
-									var x3 int
-									for w3 := 0; w3 < w.dims[3]; w3++ { // w dim1
-										x3 = s1 + (w3 * d1)
+						for wc := 0; wc < w.dims[1]; wc++ { //w input feature maps for x and w
+							xc = wc
+							var xh int
+							dilh := c.dilation[0]
+							dilw := c.dilation[1]
+							for wh := 0; wh < w.dims[2]; wh++ { //w dim
+								xh = sh + (wh * dilh)
+								if xh >= 0 && xh < x.dims[2] {
+									var xw int
+									for ww := 0; ww < w.dims[3]; ww++ { // w dim1
+										xw = sw + (ww * dilw)
 
-										if x3 >= 0 && x3 < x.dims[3] {
-											adder += x.f32data[(x.stride[0]*x0)+(x.stride[1]*x1)+(x.stride[2]*x2)+x3] * w.f32data[(w.stride[0]*w0)+(w.stride[1]*w1)+(w.stride[2]*w2)+w3]
+										if xw >= 0 && xw < x.dims[3] {
+											adder += x.f32data[(x.stride[0]*xn)+(x.stride[1]*xc)+(x.stride[2]*xh)+x.stride[3]*xw] * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wc)+(w.stride[2]*wh)+(w.stride[3]*ww)]
 										}
 									}
 
@@ -43,10 +43,8 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor, alpha, beta float32) {
 
 							}
 						}
-						adder += wb.f32data[w0]
-						//		previous := y.Get([]int{y0, y1, y2, y3})
-						//		previous = beta*previous + alpha*adder
-						y.Set(adder, []int{y0, y1, y2, y3})
+						adder += wb.f32data[wn]
+						y.Set(adder, []int{yn, yc, yh, yw})
 
 					}
 				}
@@ -54,7 +52,7 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor, alpha, beta float32) {
 
 			}
 			wg.Done()
-		}(y0)
+		}(yn)
 	}
 	wg.Wait()
 }
@@ -62,10 +60,10 @@ func (c *Convolution) backwardfilterNCHW4d(x, dw, dwb, dy *Tensor) {
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
 
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y output batch
+	for yn := 0; yn < x.dims[0]; yn++ { //x and y output batch
 		wg.Add(1)
 
-		go func(y0 int) {
+		go func(yn int) {
 
 			dwzclone, err := dw.ZeroClone()
 			if err != nil {
@@ -76,32 +74,32 @@ func (c *Convolution) backwardfilterNCHW4d(x, dw, dwb, dy *Tensor) {
 				panic(err)
 			}
 
-			for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
-				s0 := -c.padding[0]
-				for y2 := 0; y2 < dy.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < dy.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
+			for yc := 0; yc < dy.dims[1]; yc++ { // output feature maps for w and y
+				sh := -c.padding[0]
+				for yh := 0; yh < dy.dims[2]; yh, sh = yh+1, sh+c.stride[0] { //output dimsw
+					sw := -c.padding[1]
+					for yw := 0; yw < dy.dims[3]; yw, sw = yw+1, sw+c.stride[1] { //output dim2
 
-						x0 := y0
-						w0 := y1
-						d0 := c.dilation[0]
-						d1 := c.dilation[1]
-						var x1 int
-						var grad = dy.Get([]int{y0, y1, y2, y3})
-						for w1 := 0; w1 < dwb.dims[1]; w1++ { //w input feature maps for x and w
-							x1 = w1
-							var x2 int
-							for w2 := 0; w2 < dwb.dims[2]; w2++ { //w dim
-								x2 = s0 + (w2 * d0)
-								if x2 >= 0 && x2 < x.dims[2] {
+						xn := yn
+						wn := yc
+						dilh := c.dilation[0]
+						dilw := c.dilation[1]
+						var xc int
+						var grad = dy.Get([]int{yn, yc, yh, yw})
+						for wc := 0; wc < dwb.dims[1]; wc++ { //w input feature maps for x and w
+							xc = wc
+							var xh int
+							for wh := 0; wh < dwb.dims[2]; wh++ { //w dim
+								xh = sh + (wh * dilh)
+								if xh >= 0 && xh < x.dims[2] {
 									//mux.RLock()
-									var x3 int
-									for w3 := 0; w3 < dwb.dims[3]; w3++ { // w dim1
-										x3 = s1 + (w3 * d1)
+									var xw int
+									for ww := 0; ww < dwb.dims[3]; ww++ { // w dim1
+										xw = sw + (ww * dilw)
 
-										if x3 >= 0 && x3 < x.dims[3] {
-											dwzclone.f32data[(dw.stride[0]*w0)+(dw.stride[1]*w1)+(dw.stride[2]*w2)+(dw.stride[3]*w3)] +=
-												grad * x.f32data[(x.stride[0]*x0)+(x.stride[1]*x1)+(x.stride[2]*x2)+x3]
+										if xw >= 0 && xw < x.dims[3] {
+											dwzclone.f32data[(dw.stride[0]*wn)+(dw.stride[1]*wc)+(dw.stride[2]*wh)+(dw.stride[3]*ww)] +=
+												grad * x.f32data[(x.stride[0]*xn)+(x.stride[1]*xc)+(x.stride[2]*xh)+(x.stride[3]*xw)]
 										}
 									}
 									//	mux.RUnlock()
@@ -110,7 +108,7 @@ func (c *Convolution) backwardfilterNCHW4d(x, dw, dwb, dy *Tensor) {
 							}
 						}
 						//	mux.RLock()
-						dbclone.f32data[w0] += grad
+						dbclone.f32data[wn] += grad
 						//	mux.RUnlock()
 
 					}
@@ -122,38 +120,38 @@ func (c *Convolution) backwardfilterNCHW4d(x, dw, dwb, dy *Tensor) {
 			dwb.Add(dwb, dbclone, 1, 1, 0)
 			mux.Unlock()
 			wg.Done()
-		}(y0)
+		}(yn)
 	}
 	wg.Wait()
 }
 func (c *Convolution) backwarddataNCHW4d(dx, w, dy *Tensor) {
 	var wg sync.WaitGroup
 
-	for y0 := 0; y0 < dx.dims[0]; y0++ { //x and y output batch
+	for yn := 0; yn < dx.dims[0]; yn++ { //x and y output batch
 		wg.Add(1)
-		go func(y0 int) {
-			for y1 := 0; y1 < dy.dims[1]; y1++ { // output feature maps for w and y
-				s0 := -c.padding[0]
-				for y2 := 0; y2 < dy.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < dy.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-						x0 := y0
-						w0 := y1
-						d0 := c.dilation[0]
-						d1 := c.dilation[1]
-						var x1 int
-						var grad = dy.Get([]int{y0, y1, y2, y3})
-						for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-							x1 = w1
-							var x2 int
-							for w2 := 0; w2 < w.dims[2]; w2++ { //w dim
-								x2 = s0 + (w2 * d0)
-								if x2 >= 0 && x2 < dx.dims[2] {
-									var x3 int
-									for w3 := 0; w3 < w.dims[3]; w3++ { // w dim1
-										x3 = s1 + (w3 * d1)
-										if x3 >= 0 && x3 < dx.dims[3] {
-											dx.f32data[(dx.stride[0]*x0)+(dx.stride[1]*x1)+(dx.stride[2]*x2)+x3] += grad * w.f32data[(w.stride[0]*w0)+(w.stride[1]*w1)+(w.stride[2]*w2)+w3]
+		go func(yn int) {
+			for yc := 0; yc < dy.dims[1]; yc++ { // output feature maps for w and y
+				sh := -c.padding[0]
+				for yh := 0; yh < dy.dims[2]; yh, sh = yh+1, sh+c.stride[0] { //output dimsw
+					sw := -c.padding[1]
+					for yw := 0; yw < dy.dims[3]; yw, sw = yw+1, sw+c.stride[1] { //output dim2
+						xn := yn
+						wn := yc
+						dilh := c.dilation[0]
+						dilw := c.dilation[1]
+						var xc int
+						var grad = dy.Get([]int{yn, yc, yh, yw})
+						for wc := 0; wc < w.dims[1]; wc++ { //w input feature maps for x and w
+							xc = wc
+							var xh int
+							for wh := 0; wh < w.dims[2]; wh++ { //w dim
+								xh = sh + (wh * dilh)
+								if xh >= 0 && xh < dx.dims[2] {
+									var xw int
+									for ww := 0; ww < w.dims[3]; ww++ { // w dim1
+										xw = sw + (ww * dilw)
+										if xw >= 0 && xw < dx.dims[3] {
+											dx.f32data[(dx.stride[0]*xn)+(dx.stride[1]*xc)+(dx.stride[2]*xh)+(dx.stride[3]*xw)] += grad * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wc)+(w.stride[2]*wh)+(w.stride[3]*ww)]
 										}
 									}
 
@@ -168,411 +166,7 @@ func (c *Convolution) backwarddataNCHW4d(dx, w, dy *Tensor) {
 
 			}
 			wg.Done()
-		}(y0)
+		}(yn)
 	}
 	wg.Wait()
 }
-
-/*
-func (c *Convolution) forwardNCHW5dnew(x, w, wb, y *Tensor) {
-	var wg sync.WaitGroup
-	var mux sync.RWMutex
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y utput batch
-		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
-			s0 := -c.padding[0]
-			wg.Add(1)
-			go func(y0, y1, s0 int) {
-				var w0, x0 int
-				x0 = y0
-				w0 = y1
-				mux.RLock()
-				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-						s2 := -c.padding[2]
-						for y4 := 0; y4 < y.dims[4]; y4, s2 = y4+1, s2+c.stride[2] {
-							var adder float32
-							d0 := c.dilation[0]
-							d1 := c.dilation[1]
-							d2 := c.dilation[2]
-							for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-								x1 := w1
-								for w2 := 0; w2 < w.dims[2]; w2++ { //w dim
-									x2 := s0 + (w2 * d0)
-									if x2 >= 0 && x2 < x.dims[2] {
-										for w3 := 0; w3 < w.dims[3]; w3++ { // w dim1
-											x3 := s1 + (w3 * d1)
-											if x3 >= 0 && x3 < x.dims[3] {
-												for w4 := 0; w4 < w.dims[4]; w4++ {
-													x4 := s2 + (w4 * d2)
-													if x4 >= 0 && x4 < x.dims[4] {
-														adder += x.f32data[(x.stride[0]*x0)+
-															(x.stride[1]*x1)+
-															(x.stride[2]*x2)+
-															(x.stride[3]*x3)+
-															(x.stride[4]*x4)] *
-															w.f32data[(w.stride[0]*w0)+
-																(w.stride[1]*w1)+
-																(w.stride[2]*w2)+
-																(w.stride[3]*w3)+
-																(w.stride[4]*w4)]
-													}
-												}
-
-											}
-										}
-
-									}
-
-								}
-							}
-							adder += wb.f32data[w0]
-							y.Set(adder, []int{y0, y1, y2, y3, y4})
-						}
-
-					}
-				}
-				mux.RUnlock()
-				wg.Done()
-			}(y0, y1, s0)
-
-		}
-		wg.Wait()
-	}
-}
-
-func (c *Convolution) forwardNCHW5d(x, w, wb, y *Tensor) {
-	var wg sync.WaitGroup
-	var mux sync.RWMutex
-
-	for y0 := 0; y0 < y.dims[0]; y0++ { //x and y utput batch
-		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
-			s0 := -c.padding[0]
-			wg.Add(1)
-			go func(y0, y1, s0 int) {
-				var w0, x0 int
-				x0 = y0
-				w0 = y1
-				mux.RLock()
-				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] {
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] {
-						s2 := -c.padding[2]
-						for y4 := 0; y4 < y.dims[4]; y4, s2 = y4+1, s2+c.stride[2] {
-							var adder float32
-							for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-								x1 := w1
-								for w2 := 0; w2 < w.dims[2]; w2++ {
-									x2 := s0 + (w2 * c.dilation[0])
-									if x2 >= 0 && x2 < x.dims[2] {
-										for w3 := 0; w3 < w.dims[3]; w3++ {
-											x3 := s1 + (w3 * c.dilation[1])
-											if x3 >= 0 && x3 < x.dims[3] {
-												for w4 := 0; w4 < w.dims[4]; w4++ {
-													x4 := s2 + (w4 * c.dilation[2])
-													if x4 >= 0 && x4 < x.dims[4] {
-
-														adder += x.f32data[(x.stride[0]*x0)+
-															(x.stride[1]*x1)+
-															(x.stride[2]*x2)+
-															(x.stride[3]*x3)+
-															(x.stride[4]*x4)] *
-															w.f32data[(w.stride[0]*w0)+
-																(w.stride[1]*w1)+
-																(w.stride[2]*w2)+
-																(w.stride[3]*w3)+
-																(w.stride[4]*w4)]
-
-													}
-												}
-											}
-
-										}
-									}
-
-								}
-
-							}
-
-							adder += wb.f32data[w0]
-							y.Set(adder, []int{y0, y1, y2, y3, y4})
-
-						}
-					}
-				}
-				mux.RUnlock()
-				wg.Done()
-			}(y0, y1, s0)
-
-		}
-
-	}
-	wg.Wait()
-}
-
-func (c *Convolution) forwardNCHW6d(x, w, wb, y *Tensor) {
-	var wg sync.WaitGroup
-	var mux sync.RWMutex
-
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y utput batch
-		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
-
-			s0 := -c.padding[0]
-			wg.Add(1)
-			go func(y0, y1, s0 int) {
-				var w0, x0 int
-				x0 = y0
-				w0 = y1
-				mux.RLock()
-				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] {
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] {
-						s2 := -c.padding[2]
-						for y4 := 0; y4 < y.dims[2]; y4, s2 = y4+1, s2+c.stride[0] {
-							s3 := -c.padding[3]
-							for y5 := 0; y4 < y.dims[3]; y5, s3 = y5+1, s3+c.stride[1] {
-								var adder float32
-								for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-									x1 := w1
-									for w2 := 0; w2 < w.dims[2]; w2++ {
-										x2 := s0 + (w2 * c.dilation[0])
-										if x2 >= 0 && x2 < x.dims[2] {
-											for w3 := 0; w3 < w.dims[3]; w3++ {
-												x3 := s1 + (w3 * c.dilation[1])
-												if x3 >= 0 && x3 < x.dims[3] {
-													for w4 := 0; w4 < w.dims[4]; w4++ {
-														x4 := s2 + (w4 * c.dilation[2])
-														if x4 >= 0 && x4 < x.dims[4] {
-															for w5 := 0; w5 < w.dims[5]; w5++ {
-																x5 := s3 + (w5 * c.dilation[3])
-																if x5 >= 0 && x5 < x.dims[5] {
-
-																	adder += x.f32data[(x.stride[0]*x0)+
-																		(x.stride[1]*x1)+
-																		(x.stride[2]*x2)+
-																		(x.stride[3]*x3)+
-																		(x.stride[4]*x4)+
-																		(x.stride[5]*x5)] *
-																		w.f32data[(w.stride[0]*w0)+
-																			(w.stride[1]*w1)+
-																			(w.stride[2]*w2)+
-																			(w.stride[3]*w3)+
-																			(w.stride[4]*w4)+
-																			(w.stride[5]*w5)]
-
-																}
-															}
-														}
-
-													}
-												}
-
-											}
-
-										}
-									}
-								}
-								adder += wb.f32data[w0]
-								y.Set(adder, []int{y0, y1, y2, y3, y4, y5})
-
-							}
-						}
-
-					}
-				}
-				mux.RUnlock()
-				wg.Done()
-			}(y0, y1, s0)
-
-		}
-
-	}
-	wg.Wait()
-}
-
-func (c *Convolution) forwardNCHW7d(x, w, wb, y *Tensor) {
-
-	var wg sync.WaitGroup
-	var mux sync.RWMutex
-
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y utput batch
-		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
-
-			s0 := -c.padding[0]
-			wg.Add(1)
-			go func(y0, y1, s0 int) {
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
-				mux.RLock()
-				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] {
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] {
-						s2 := -c.padding[2]
-						for y4 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] {
-							s3 := -c.padding[3]
-							for y5 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] {
-								s4 := -c.padding[4]
-								for y6 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] {
-									var adder float32
-									for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-										x1 = w1
-										for w2 := 0; w2 < w.dims[2]; w2++ {
-											x2 := s0 + (w2 * c.dilation[0])
-											if x2 >= 0 && x2 < x.dims[2] {
-												for w3 := 0; w3 < w.dims[3]; w3++ {
-													x3 := s1 + (w3 * c.dilation[1])
-													if x3 >= 0 && x3 < x.dims[3] {
-														for w4 := 0; w4 < w.dims[4]; w4++ {
-															x4 := s2 + (w4 * c.dilation[2])
-															if x4 >= 0 && x4 < x.dims[4] {
-																for w5 := 0; w5 < w.dims[5]; w5++ {
-																	x5 := s3 + (w5 * c.dilation[3])
-																	if x5 >= 0 && x5 < x.dims[5] {
-																		for w6 := 0; w6 < w.dims[6]; w6++ {
-																			x6 := s4 + (w6 * c.dilation[4])
-																			if x6 >= 0 && x6 < x.dims[6] {
-																				adder += x.f32data[(x.stride[0]*x0)+
-																					(x.stride[1]*x1)+
-																					(x.stride[2]*x2)+
-																					(x.stride[3]*x3)+
-																					(x.stride[4]*x4)+
-																					(x.stride[5]*x5)+
-																					(x.stride[6]*x6)] *
-																					w.f32data[(w.stride[0]*w0)+
-																						(w.stride[1]*w1)+
-																						(w.stride[2]*w2)+
-																						(w.stride[3]*w3)+
-																						(w.stride[4]*w4)+
-																						(w.stride[5]*w5)+
-																						(w.stride[6]*w6)]
-
-																			}
-																		}
-																	}
-																}
-
-															}
-														}
-
-													}
-
-												}
-											}
-										}
-									}
-									adder += wb.f32data[w0]
-									y.Set(adder, []int{y0, y1, y2, y3, y4, y5, y6})
-
-								}
-							}
-						}
-					}
-				}
-				mux.RUnlock()
-				wg.Done()
-			}(y0, y1, s0)
-
-		}
-
-	}
-	wg.Wait()
-}
-
-func (c *Convolution) forwardNCHW8d(x, w, wb, y *Tensor) {
-
-	var wg sync.WaitGroup
-	var mux sync.RWMutex
-
-	for y0 := 0; y0 < x.dims[0]; y0++ { //x and y utput batch
-		for y1 := 0; y1 < y.dims[1]; y1++ { // output feature maps for w and y
-
-			s0 := -c.padding[0]
-			wg.Add(1)
-			go func(y0, y1, s0 int) {
-				var w0, x0, x1 int
-				x0 = y0
-				w0 = y1
-				mux.RLock()
-				for y2 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-					s1 := -c.padding[1]
-					for y3 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-						s2 := -c.padding[2]
-						for y4 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-							s3 := -c.padding[3]
-							for y5 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-								s4 := -c.padding[4]
-								for y6 := 0; y2 < y.dims[2]; y2, s0 = y2+1, s0+c.stride[0] { //output dims1
-									s5 := -c.padding[5]
-									for y7 := 0; y3 < y.dims[3]; y3, s1 = y3+1, s1+c.stride[1] { //output dim2
-										var adder float32
-										for w1 := 0; w1 < w.dims[1]; w1++ { //w input feature maps for x and w
-											x1 = w1
-											for w2 := 0; w2 < w.dims[2]; w2++ { //w dim
-												x2 := s0 + (w2 * c.dilation[0])
-												if x2 >= 0 && x2 < x.dims[2] {
-													for w3 := 0; w3 < w.dims[3]; w3++ { // w dim1
-														x3 := s1 + (w3 * c.dilation[1])
-														if x3 >= 0 && x3 < x.dims[3] {
-															for w4 := 0; w4 < w.dims[4]; w4++ { //w dim
-																x4 := s2 + (w4 * c.dilation[2])
-																if x4 >= 0 && x4 < x.dims[4] {
-																	for w5 := 0; w5 < w.dims[5]; w5++ { // w dim1
-																		x5 := s3 + (w5 * c.dilation[3])
-																		if x5 >= 0 && x5 < x.dims[5] {
-																			for w6 := 0; w6 < w.dims[6]; w6++ {
-																				x6 := s4 + (w6 * c.dilation[4])
-																				if x6 >= 0 && x6 < x.dims[6] {
-																					for w7 := 0; w7 < w.dims[7]; w7++ {
-																						x7 := s5 + (w7 * c.dilation[5])
-																						if x7 >= 0 && x7 < x.dims[7] {
-
-																							adder += x.f32data[(x.stride[0]*x0)+
-																								(x.stride[1]*x1)+
-																								(x.stride[2]*x2)+
-																								(x.stride[3]*x3)+
-																								(x.stride[4]*x4)+
-																								(x.stride[5]*x5)+
-																								(x.stride[6]*x6)+
-																								(x.stride[7]*x7)] *
-																								w.f32data[(w.stride[0]*w0)+
-																									(w.stride[1]*w1)+
-																									(w.stride[2]*w2)+
-																									(w.stride[3]*w3)+
-																									(w.stride[4]*w4)+
-																									(w.stride[5]*w5)+
-																									(w.stride[6]*w6)+
-																									(w.stride[7]*w7)]
-
-																						}
-																					}
-																				}
-																			}
-																		}
-																	}
-																}
-															}
-														}
-													}
-												}
-											}
-										}
-										adder += wb.f32data[w0]
-										y.Set(adder, []int{y0, y1, y2, y3, y4, y5, y6, y7})
-
-									}
-								}
-							}
-						}
-					}
-				}
-				mux.RUnlock()
-				wg.Done()
-			}(y0, y1, s0)
-
-		}
-
-	}
-	wg.Wait()
-}
-*/

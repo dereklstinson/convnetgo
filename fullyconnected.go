@@ -140,7 +140,7 @@ func FullyConnectedBackwardFilter(x, dw, db, dy *Tensor, alpha, beta float32) er
 	batchsize := x.dims[0]
 	xbatchstride := x.stride[0]
 	ybatchstride := dy.stride[0]
-	var mux sync.Mutex
+	//var mux sync.Mutex
 	var wg sync.WaitGroup
 	for i := 0; i < batchsize; i++ {
 		wg.Add(1)
@@ -150,12 +150,12 @@ func FullyConnectedBackwardFilter(x, dw, db, dy *Tensor, alpha, beta float32) er
 			for j := 0; j < neurons; j++ {
 				neuronoffset := dw.stride[0] * j
 				var grad = dy.f32data[yoffset+j]
-				mux.Lock()
+
 				for k := 0; k < xvol; k++ {
 					dw.f32data[neuronoffset+k] += x.f32data[xoffset+k] * grad
 
 				}
-				mux.Unlock()
+
 				db.f32data[j] += grad
 			}
 			wg.Done()

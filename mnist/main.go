@@ -29,15 +29,16 @@ func main() {
 	seeder := rand.New(rand.NewSource(time.Now().Unix()))
 	ti, tl, tti, ttl := getmnistdata([]string{mnisttrainimagepath, mnisttrainlabelpath, mnisttestimagepath, mnisttestlabelpath})
 	fmt.Println(len(ti), len(tl), len(tti), len(ttl))
-	batchsize := 200
-	decay1 := float32(.00001)
+	batchsize := 3
+	rate := float32(.01)
+	decay1 := float32(0)
 	decay2 := float32(.001)
-	NHWC := true
+	NHWC := false
 	var inputlayerweights []int
 	var otherlayerdims []int
 	var labeldims []int
 	var imagedims []int
-	var neuronhidden = 12
+	var neuronhidden = 20
 	bdims := []int{20, 1, 1, 1}
 	if NHWC {
 		inputlayerweights = []int{neuronhidden, 4, 4, 1}
@@ -110,11 +111,11 @@ func main() {
 	updaters := make([]*trainer, 0)
 	wdims := inputlayerweights
 	for i := 0; i < 3; i++ {
-		layer := createconvlayer(previousinput, dpreviousinput, wdims, bdims, []int{2, 2}, []int{2, 2}, []int{2, 2}, NHWC)
+		layer := createconvlayer(previousinput, dpreviousinput, wdims, bdims, []int{3, 3}, []int{2, 2}, []int{2, 2}, NHWC)
 		layers = append(layers, layer)
-		updater := createtrainer(layer.w, layer.dw, decay1, decay2)
+		updater := createtrainer(layer.w, layer.dw, decay1, decay2, rate)
 		updaters = append(updaters, updater)
-		updater = createtrainer(layer.b, layer.db, decay1, decay2)
+		updater = createtrainer(layer.b, layer.db, decay1, decay2, rate)
 		updaters = append(updaters, updater)
 		layer = createactlayer(layer.y, layer.dy, NHWC)
 		layers = append(layers, layer)
@@ -124,9 +125,9 @@ func main() {
 	}
 
 	classifier := createclassifierlayer(previousinput, dpreviousinput, trainlabel[0], outputtensor, NHWC)
-	updater := createtrainer(classifier.w, classifier.dw, decay1, decay2)
+	updater := createtrainer(classifier.w, classifier.dw, decay1, decay2, rate)
 	updaters = append(updaters, updater)
-	updater = createtrainer(classifier.b, classifier.db, decay1, decay2)
+	updater = createtrainer(classifier.b, classifier.db, decay1, decay2, rate)
 	updaters = append(updaters, updater)
 	for i := 0; i < 20; i++ {
 		var avgloss float32
@@ -159,10 +160,11 @@ func main() {
 			//fmt.Println(layers[2].dw)
 			avgloss += classifier.loss
 			avgpercent += classifier.percent
-			//	go fmt.Printf("epoch: %v, run: %v, avgbatchloss: %v, avgpercent: %v\n", i, j, classifier.loss, classifier.percent)
-			//	fmt.Println(classifier.cfy)
+			go fmt.Printf("epoch: %v, run: %v, avgbatchloss: %v, avgpercent: %v\n", i, j, classifier.loss, classifier.percent)
+
 			//	fmt.Println(classifier.loss)
-			//	fmt.Println(classifier.cfy)
+			fmt.Println(classifier.nny)
+			fmt.Println(classifier.cfy)
 			for k := len(layers) - 1; k >= 0; k-- {
 				err = layers[k].backwarddata()
 				if err != nil {
@@ -311,14 +313,14 @@ func (c *classifierlayer) forward() error {
 	if err != nil {
 		return err
 	}
-	return convnetgo.SoftMax(c.nny, c.cfy, c.alpha, c.beta)
+	return convnetgo.SoftMaxForward(c.nny, c.cfy, c.alpha, c.beta)
 }
 func (c *classifierlayer) testingloss() (loss, percent float32) {
 	return convnetgo.SoftMaxLossandPercent(c.cfdy, c.cfy)
 }
 func (c *classifierlayer) backward() error {
 	c.loss, c.percent = convnetgo.SoftMaxLossandPercent(c.cfdy, c.cfy)
-	err := c.nndy.Add(c.cfy, c.cfdy, 1, -1, 0)
+	err := convnetgo.SoftMaxBackward(c.nndy, c.cfy, c.cfdy, 1, 0)
 	if err != nil {
 		return err
 	}
@@ -336,7 +338,7 @@ func (t *trainer) updateweights() error {
 func (t *trainer) l1l2loss() (l1, l2 float32) {
 	return t.l1, t.l2
 }
-func createtrainer(w, dw *convnetgo.Tensor, d1, d2 float32) *trainer {
+func createtrainer(w, dw *convnetgo.Tensor, d1, d2, rate float32) *trainer {
 	var err error
 	t := new(trainer)
 	t.w = w
@@ -351,7 +353,14 @@ func createtrainer(w, dw *convnetgo.Tensor, d1, d2 float32) *trainer {
 	if err != nil {
 		panic(err)
 	}
-	t.a = convnetgo.CreateAdamTrainer(nil)
+	opts := new(convnetgo.AdamOptions)
+	opts.Beta1 = .9
+	opts.Beta2 = .999
+	opts.Decay1 = d1
+	opts.Decay2 = d2
+	opts.Eps = (float32)(1e-8)
+	opts.Rate = rate
+	t.a = convnetgo.CreateAdamTrainer(opts)
 	return t
 }
 func createconvlayer(x, dx *convnetgo.Tensor, wdims, bdims, pad, stride, dilation []int, nhwc bool) *layer {

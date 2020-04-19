@@ -11,6 +11,7 @@ type Tensor struct {
 	dims    []int     // I use int because there is a ton of libraries in c, and this will make the conversion easier.
 	stride  []int     //stride is used for placement of values and grabing values.
 	f32data []float32 //place to hold data in float32
+	strided bool
 	nhwc    bool
 }
 

@@ -111,7 +111,7 @@ func l1l2Regularization(decay1, decay2, batch float32, w, dw []float32) (l1, l2 
 		}
 		grad2 = w[i] * decay1
 
-		dw[i] = (dw[i] + grad1 + grad2) // / batch
+		dw[i] = (dw[i] + grad1 + grad2) / batch
 	}
 	return l1, l2
 }

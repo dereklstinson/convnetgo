@@ -5,9 +5,9 @@ import (
 	"math"
 )
 
-//SoftMax performs the softmax calculation
+//SoftMaxForward performs the softmax calculation
 //alpha and beta have no function right now
-func SoftMax(x, y *Tensor, alpha, beta float32) (err error) {
+func SoftMaxForward(x, y *Tensor, alpha, beta float32) (err error) {
 	if x.nhwc != y.nhwc {
 		return errors.New(" x.nhwc != y.nhwc")
 	}
@@ -35,7 +35,7 @@ func SoftMax(x, y *Tensor, alpha, beta float32) (err error) {
 					denom += math.Exp(float64(x.f32data[i*stride[0]+j*stride[1]+k*stride[2]+stride[3]*l]))
 				}
 				for l := 0; l < dims[3]; l++ {
-					y.f32data[i*stride[0]+j*stride[1]+k*stride[2]+l] =
+					y.f32data[i*stride[0]+j*stride[1]+k*stride[2]+(stride[3]*l)] =
 						float32(math.Exp(float64(x.f32data[i*stride[0]+j*stride[1]+k*stride[2]+stride[3]*l])) / denom)
 				}
 			}
@@ -44,8 +44,29 @@ func SoftMax(x, y *Tensor, alpha, beta float32) (err error) {
 	return nil
 }
 
+//SoftMaxBackward does the softmax backwards
+//y is the output of softmax from softmax forward
+//dx is the errors from the inputs of the SoftMaxForwards
+//target is the target values that the output is trying to get
+//
+//
+//alpha, beta behave like
+//
+//dx= dx*beta + alpha *Operation(y, target)
+//
+func SoftMaxBackward(dx, y, target *Tensor, alpha, beta float32) error {
+	if dx.nhwc != y.nhwc || dx.nhwc != target.nhwc {
+		return errors.New(" dx.nhwc != y.nhwc || dx.nhwc !=target.nhwc")
+	}
+	if !comparedims(dx.dims, y.dims) || !comparedims(dx.dims, target.dims) {
+		return errors.New("!comparedims(dx.dims, y.dims) || !comparedims(dx.dims,target.dims)")
+	}
+
+	return dx.Add(y, target, alpha, -alpha, beta)
+
+}
+
 //SoftMaxLossandPercent will do the softmax loss of the layer.  It will be an average of all the indicators(anything greater than 0).
-//alpha and beta have no function right now
 func SoftMaxLossandPercent(target, output *Tensor) (avgloss float32, avgpercent float32) {
 	var lossadder float64
 	var val float32
