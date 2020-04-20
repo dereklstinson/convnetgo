@@ -29,207 +29,220 @@ func main() {
 	seeder := rand.New(rand.NewSource(time.Now().Unix()))
 	ti, tl, tti, ttl := getmnistdata([]string{mnisttrainimagepath, mnisttrainlabelpath, mnisttestimagepath, mnisttestlabelpath})
 	fmt.Println(len(ti), len(tl), len(tti), len(ttl))
-	batchsize := 3
-	rate := float32(.01)
-	decay1 := float32(0)
-	decay2 := float32(.001)
-	NHWC := false
-	var inputlayerweights []int
-	var otherlayerdims []int
-	var labeldims []int
-	var imagedims []int
-	var neuronhidden = 20
-	bdims := []int{20, 1, 1, 1}
-	if NHWC {
-		inputlayerweights = []int{neuronhidden, 4, 4, 1}
-		otherlayerdims = []int{neuronhidden, 4, 4, neuronhidden}
+	//Going to test the speed of several different batchsizes.
+	batchsizes := []int{5, 10, 15, 20, 50, 100, 200, 1000}
+	nepochs := 3 // will manually find the average of 3 epochs
+	for _, bs := range batchsizes {
+		batchsize := bs
+		rate := float32(.001)
+		decay1 := float32(.00001)
+		decay2 := float32(.0001)
 
-		labeldims = []int{batchsize, 1, 1, 10}
-		imagedims = []int{batchsize, 28, 28, 1}
-	} else {
-		inputlayerweights = []int{neuronhidden, 1, 4, 4}
-		otherlayerdims = []int{neuronhidden, neuronhidden, 4, 4}
+		NHWC := true
+		var inputlayerweights []int
+		var otherlayerdims []int
+		var labeldims []int
+		var imagedims []int
+		var neuronhidden = 20
+		bdims := []int{20, 1, 1, 1}
+		if NHWC {
+			inputlayerweights = []int{neuronhidden, 4, 4, 1}
+			otherlayerdims = []int{neuronhidden, 4, 4, neuronhidden}
 
-		labeldims = []int{batchsize, 10, 1, 1}
-		imagedims = []int{batchsize, 1, 28, 28}
-	}
+			labeldims = []int{batchsize, 1, 1, 10}
+			imagedims = []int{batchsize, 28, 28, 1}
+		} else {
+			inputlayerweights = []int{neuronhidden, 1, 4, 4}
+			otherlayerdims = []int{neuronhidden, neuronhidden, 4, 4}
 
-	tnbatches := len(ti) / batchsize
-	ttbatches := len(tti) / batchsize
-	trainimage := make([]*convnetgo.Tensor, tnbatches)
-	trainlabel := make([]*convnetgo.Tensor, tnbatches)
-	testimage := make([]*convnetgo.Tensor, ttbatches)
-	testlabel := make([]*convnetgo.Tensor, ttbatches)
-	fmt.Println(len(testlabel))
-	fmt.Println(len(trainlabel))
-	var err error
+			labeldims = []int{batchsize, 10, 1, 1}
+			imagedims = []int{batchsize, 1, 28, 28}
+		}
 
-	outputtensor, err := convnetgo.CreateTensor(labeldims, NHWC)
-	if err != nil {
-		panic(err)
-	}
-	for i := range trainimage {
-		trainimage[i], err = convnetgo.CreateTensor(imagedims, NHWC)
+		tnbatches := len(ti) / batchsize
+		ttbatches := len(tti) / batchsize
+		trainimage := make([]*convnetgo.Tensor, tnbatches)
+		trainlabel := make([]*convnetgo.Tensor, tnbatches)
+		testimage := make([]*convnetgo.Tensor, ttbatches)
+		testlabel := make([]*convnetgo.Tensor, ttbatches)
+
+		var err error
+
+		outputtensor, err := convnetgo.CreateTensor(labeldims, NHWC)
 		if err != nil {
 			panic(err)
 		}
-		trainlabel[i], err = convnetgo.CreateTensor(labeldims, NHWC)
-		if err != nil {
-			panic(err)
-		}
-		err = loadrandomtensor(trainimage[i], trainlabel[i], ti, tl, seeder.Int63())
-		if err != nil {
-			panic(err)
-		}
-	}
-	for i := range testimage {
-		testimage[i], err = convnetgo.CreateTensor(imagedims, NHWC)
-		if err != nil {
-			panic(err)
-		}
-		testlabel[i], err = convnetgo.CreateTensor(labeldims, NHWC)
-		if err != nil {
-			panic(err)
-		}
-		err = loadrandomtensor(testimage[i], testlabel[i], tti, ttl, seeder.Int63())
-		if err != nil {
-			panic(err)
-		}
-	}
-	for i := range trainimage {
-		trainimage[i].MultAll(float32(1) / float32(255))
-		trainimage[i].AddAll(-trainimage[i].Average())
-	}
-	for i := range testimage {
-		testimage[i].MultAll(float32(1) / float32(255))
-		testimage[i].AddAll(-testimage[i].Average())
-	}
-	previousinput := trainimage[0]
-	var dpreviousinput *convnetgo.Tensor
-	layers := make([]*layer, 0)
 
-	updaters := make([]*trainer, 0)
-	wdims := inputlayerweights
-	for i := 0; i < 3; i++ {
-		layer := createconvlayer(previousinput, dpreviousinput, wdims, bdims, []int{3, 3}, []int{2, 2}, []int{2, 2}, NHWC)
-		layers = append(layers, layer)
-		updater := createtrainer(layer.w, layer.dw, decay1, decay2, rate)
-		updaters = append(updaters, updater)
-		updater = createtrainer(layer.b, layer.db, decay1, decay2, rate)
-		updaters = append(updaters, updater)
-		layer = createactlayer(layer.y, layer.dy, NHWC)
-		layers = append(layers, layer)
-		previousinput = layer.y
-		dpreviousinput = layer.dy
-		wdims = otherlayerdims
-	}
+		for i := range trainimage {
 
-	classifier := createclassifierlayer(previousinput, dpreviousinput, trainlabel[0], outputtensor, NHWC)
-	updater := createtrainer(classifier.w, classifier.dw, decay1, decay2, rate)
-	updaters = append(updaters, updater)
-	updater = createtrainer(classifier.b, classifier.db, decay1, decay2, rate)
-	updaters = append(updaters, updater)
-	for i := 0; i < 20; i++ {
-		var avgloss float32
-		var avgtestloss float32
-		var avgpercent float32
-		var avgtestpercent float32
-		starttime := time.Now()
-		for j := range trainimage {
-			//	traintimestart := time.Now()
-
-			layers[0].x = trainimage[j]
-			classifier.cfdy = trainlabel[j]
-			for k := range layers {
-				err = layers[k].forward()
-				if err != nil {
-					panic(err)
-				}
-
-			}
-			err = classifier.forward()
+			trainimage[i], err = convnetgo.CreateTensor(imagedims, NHWC)
 			if err != nil {
 				panic(err)
 			}
-			//	trainforwardtime := time.Now().Sub(traintimestart).Seconds()
-			//	trainbackwarddatatimestart := time.Now()
-			err = classifier.backward()
+			trainlabel[i], err = convnetgo.CreateTensor(labeldims, NHWC)
 			if err != nil {
 				panic(err)
 			}
-			//fmt.Println(layers[2].dw)
-			avgloss += classifier.loss
-			avgpercent += classifier.percent
-			go fmt.Printf("epoch: %v, run: %v, avgbatchloss: %v, avgpercent: %v\n", i, j, classifier.loss, classifier.percent)
+			//	err = loadrandomtensor(trainimage[i], trainlabel[i], ti, tl, seeder.Int63())
+			//	if err != nil {
+			//		panic(err)
+			//	}
 
-			//	fmt.Println(classifier.loss)
-			fmt.Println(classifier.nny)
-			fmt.Println(classifier.cfy)
-			for k := len(layers) - 1; k >= 0; k-- {
-				err = layers[k].backwarddata()
-				if err != nil {
-					panic(err)
-				}
+		}
+
+		for i := range testimage {
+			testimage[i], err = convnetgo.CreateTensor(imagedims, NHWC)
+			if err != nil {
+				panic(err)
 			}
-			var wg sync.WaitGroup
-			//	trainbackwarddatatime := time.Now().Sub(trainbackwarddatatimestart).Seconds()
-			//	trainbackwardfiltertimestart := time.Now()
-			for k := 0; k < len(layers); k++ {
+			testlabel[i], err = convnetgo.CreateTensor(labeldims, NHWC)
+			if err != nil {
+				panic(err)
+			}
+			err = loadrandomtensor(testimage[i], testlabel[i], tti, ttl, seeder.Int63())
+			if err != nil {
+				panic(err)
+			}
+		}
+		//	for i := range trainimage {
+		//		trainimage[i].MultAll(float32(1) / float32(255))
+		//		trainimage[i].AddAll(-trainimage[i].Average())
+		//	}
+		for i := range testimage {
+			testimage[i].MultAll(float32(1) / float32(255))
+			testimage[i].AddAll(-testimage[i].Average())
+		}
+		previousinput := trainimage[0]
+		var dpreviousinput *convnetgo.Tensor
+		layers := make([]*layer, 0)
+
+		updaters := make([]*trainer, 0)
+		wdims := inputlayerweights
+		for i := 0; i < 3; i++ {
+			layer := createconvlayer(previousinput, dpreviousinput, wdims, bdims, []int{3, 3}, []int{2, 2}, []int{2, 2}, NHWC)
+			layers = append(layers, layer)
+			updater := createtrainer(layer.w, layer.dw, decay1, decay2, rate)
+			updaters = append(updaters, updater)
+			updater = createtrainer(layer.b, layer.db, decay1, decay2, rate)
+			updaters = append(updaters, updater)
+			layer = createactlayer(layer.y, layer.dy, NHWC)
+			layers = append(layers, layer)
+			previousinput = layer.y
+			dpreviousinput = layer.dy
+			wdims = otherlayerdims
+		}
+
+		classifier := createclassifierlayer(previousinput, dpreviousinput, outputtensor, trainlabel[0], NHWC)
+		updater := createtrainer(classifier.w, classifier.dw, decay1, decay2, rate)
+		updaters = append(updaters, updater)
+		updater = createtrainer(classifier.b, classifier.db, decay1, decay2, rate)
+		updaters = append(updaters, updater)
+		var wg sync.WaitGroup
+		for i := 0; i < nepochs; i++ {
+			for j := range trainimage {
 				wg.Add(1)
-				go func(k int) {
+				go func(j int) {
+
+					err = loadrandomtensor(trainimage[j], trainlabel[j], ti, tl, seeder.Int63())
+					if err != nil {
+						panic(err)
+					}
+					trainimage[j].MultAll(float32(1) / float32(255))
+					trainimage[j].AddAll(-trainimage[j].Average())
+					wg.Done()
+				}(j)
+
+			}
+			wg.Wait()
+			var avgloss float32
+			var avgtestloss float32
+			var avgpercent float32
+			var avgtestpercent float32
+			starttime := time.Now()
+			for j := range trainimage {
+				//	traintimestart := time.Now()
+
+				layers[0].x = trainimage[j]
+				classifier.cfdy = trainlabel[j]
+
+				for k := range layers {
+					err = layers[k].forward()
+					if err != nil {
+						panic(err)
+					}
+
+				}
+				err = classifier.forward()
+				if err != nil {
+					panic(err)
+				}
+
+				//	trainforwardtime := time.Now().Sub(traintimestart).Seconds()
+				//	trainbackwarddatatimestart := time.Now()
+				err = classifier.backward()
+				if err != nil {
+					panic(err)
+				}
+
+				avgloss += classifier.loss
+				avgpercent += classifier.percent
+				//	go fmt.Printf("epoch: %v, run: %v, avgbatchloss: %v, avgpercent: %v\n", i, j, classifier.loss, classifier.percent)
+
+				for k := len(layers) - 1; k >= 0; k-- {
+					err = layers[k].backwarddata()
+					if err != nil {
+						panic(err)
+					}
+				}
+
+				for k := 0; k < len(layers); k++ {
+
 					err = layers[k].backwardfilter()
 					if err != nil {
 						panic(err)
 					}
-					wg.Done()
-				}(k)
+
+				}
+
+				for k := 0; k < len(updaters); k++ {
+					wg.Add(1)
+					go func(k int) {
+						err = updaters[k].updateweights()
+						if err != nil {
+							panic(err)
+						}
+						wg.Done()
+					}(k)
+
+				}
+				wg.Wait()
+
 			}
-			wg.Wait()
-			//		trainbackwardfiltertime := time.Now().Sub(trainbackwardfiltertimestart).Seconds()
-			//	trainupdateweightstimestart := time.Now()
-			for k := 0; k < len(updaters); k++ {
-				wg.Add(1)
-				go func(k int) {
-					err = updaters[k].updateweights()
+
+			for j := range testimage {
+
+				layers[0].x = testimage[j]
+				classifier.cfdy = testlabel[j]
+				for k := range layers {
+					err = layers[k].forward()
 					if err != nil {
 						panic(err)
 					}
-					wg.Done()
-				}(k)
-
-			}
-			wg.Wait()
-			//	trainupdateweightstime := time.Now().Sub(trainupdateweightstimestart).Seconds()
-			//	traintotalruntime := time.Now().Sub(traintimestart).Seconds()
-			//	go fmt.Printf("epoch: %v, run: %v, avgloss: %v, avgperc: %v, fwt: %v,bwdt: %v,bwdft: %v,updatet: %v, tottime: %v\n",
-			//		i, j, classifier.loss, classifier.percent, trainforwardtime, trainbackwarddatatime, trainbackwardfiltertime, trainupdateweightstime, traintotalruntime)
-
-			//	fmt.Println(classifier.dx)
-		}
-
-		for j := range testimage {
-
-			layers[0].x = testimage[j]
-			classifier.cfdy = testlabel[j]
-			for k := range layers {
-				err = layers[k].forward()
+				}
+				err = classifier.forward()
 				if err != nil {
 					panic(err)
 				}
-			}
-			err = classifier.forward()
-			if err != nil {
-				panic(err)
-			}
-			testloss, testpercent := classifier.testingloss()
+				testloss, testpercent := classifier.testingloss()
 
-			avgtestloss += testloss
-			avgtestpercent += testpercent
+				avgtestloss += testloss
+				avgtestpercent += testpercent
+
+			}
+
+			fmt.Printf("BS: %v,trainloss: %v,trainpercent: %v ,testloss: %v,testpercent: %v, epochtime: %v\n", bs, avgloss/float32(len(trainimage)), avgpercent/float32(len(trainimage)), avgtestloss/(float32)(len(testimage)), avgtestpercent/(float32)(len(testimage)), time.Now().Sub(starttime).Seconds())
 
 		}
-
-		fmt.Printf("trainloss: %v,trainpercent: %v ,testloss: %v,testpercent: %v, epochtime: %v\n", avgloss/float32(len(trainimage)), avgpercent/float32(len(trainimage)), avgtestloss/(float32)(len(testimage)), avgtestpercent/(float32)(len(testimage)), time.Now().Sub(starttime).Seconds())
-
 	}
 
 }
@@ -241,7 +254,6 @@ type trainer struct {
 	d1, d2            float32
 }
 type classifierlayer struct {
-	alpha, beta      float32
 	x, dx, nny, nndy *convnetgo.Tensor
 	w, dw, b, db     *convnetgo.Tensor
 	cfy, cfdy        *convnetgo.Tensor
@@ -255,6 +267,7 @@ func createclassifierlayer(x, dx, y, dy *convnetgo.Tensor, NHWC bool) *classifie
 	cl.cfy = y
 	cl.cfdy = dy
 	cl.dx = dx
+
 	cl.nndy, err = y.ZeroClone()
 	if err != nil {
 		panic(err)
@@ -309,26 +322,28 @@ func createclassifierlayer(x, dx, y, dy *convnetgo.Tensor, NHWC bool) *classifie
 	return cl
 }
 func (c *classifierlayer) forward() error {
-	err := convnetgo.FullyConnectedForward(c.x, c.w, c.b, c.nny, c.alpha, c.beta)
+	err := convnetgo.FullyConnectedForward(c.x, c.w, c.b, c.nny, 1, 0)
 	if err != nil {
 		return err
 	}
-	return convnetgo.SoftMaxForward(c.nny, c.cfy, c.alpha, c.beta)
+	return convnetgo.SoftMaxForward(c.nny, c.cfy, 1, 0)
 }
 func (c *classifierlayer) testingloss() (loss, percent float32) {
 	return convnetgo.SoftMaxLossandPercent(c.cfdy, c.cfy)
 }
 func (c *classifierlayer) backward() error {
+
 	c.loss, c.percent = convnetgo.SoftMaxLossandPercent(c.cfdy, c.cfy)
 	err := convnetgo.SoftMaxBackward(c.nndy, c.cfy, c.cfdy, 1, 0)
 	if err != nil {
 		return err
 	}
-	err = convnetgo.FullyConnectedBackwardData(c.dx, c.w, c.nndy, c.alpha, c.beta)
+
+	err = convnetgo.FullyConnectedBackwardData(c.dx, c.w, c.nndy, 1, 0)
 	if err != nil {
 		return err
 	}
-	err = convnetgo.FullyConnectedBackwardFilter(c.x, c.dw, c.db, c.nndy, c.alpha, c.beta)
+	err = convnetgo.FullyConnectedBackwardFilter(c.x, c.dw, c.db, c.nndy, 1, 0)
 	return nil
 }
 func (t *trainer) updateweights() error {
@@ -368,8 +383,7 @@ func createconvlayer(x, dx *convnetgo.Tensor, wdims, bdims, pad, stride, dilatio
 	l := new(layer)
 	l.x = x
 	l.dx = dx
-	l.alpha = 1
-	l.beta = 0
+
 	l.b, err = convnetgo.CreateTensor(bdims, nhwc)
 	if err != nil {
 		panic(err)
@@ -406,8 +420,7 @@ func createconvlayer(x, dx *convnetgo.Tensor, wdims, bdims, pad, stride, dilatio
 func createactlayer(x, dx *convnetgo.Tensor, nhwc bool) *layer {
 	var err error
 	l := new(layer)
-	l.alpha = 1
-	l.beta = 0
+
 	l.x = x
 	l.dx = dx
 	l.y, err = convnetgo.CreateTensor(x.Dims(), nhwc)
@@ -428,25 +441,25 @@ func createactlayer(x, dx *convnetgo.Tensor, nhwc bool) *layer {
 }
 func (l *layer) forward() error {
 	if l.conv != nil {
-		return l.conv.Forward(l.x, l.w, l.b, l.y, l.alpha, l.beta)
+		return l.conv.Forward(l.x, l.w, l.b, l.y, 1, 0)
 
 	}
 	if l.act != nil {
-		return l.act.Forward(l.x, l.y, l.alpha, l.beta)
+		return l.act.Forward(l.x, l.y, 1, 0)
 	}
 	return errors.New("Please set layer")
 
 }
 func (l *layer) backwardfilter() error {
 	if l.conv != nil {
-		return l.conv.BackwardFilter(l.x, l.dw, l.db, l.dy, l.alpha, l.beta)
+		return l.conv.BackwardFilter(l.x, l.dw, l.db, l.dy, 1, 0)
 	}
 	return nil
 }
 func (l *layer) backwarddata() error {
 	if l.conv != nil {
 		if l.dx != nil {
-			err := l.conv.BackwardData(l.dx, l.w, l.dy, l.alpha, l.beta)
+			err := l.conv.BackwardData(l.dx, l.w, l.dy, 1, 0)
 			if err != nil {
 				return err
 			}
@@ -454,13 +467,13 @@ func (l *layer) backwarddata() error {
 		return nil
 	}
 	if l.act != nil {
-		return l.act.Backward(l.x, l.dx, l.dy, l.alpha, l.beta)
+		return l.act.Backward(l.x, l.dx, l.dy, 1, 0)
 	}
 	return errors.New("Please set layer")
 }
 
 type layer struct {
-	alpha, beta  float32
+	//	alpha, beta  float32
 	x, dx, y, dy *convnetgo.Tensor
 	w, dw, b, db *convnetgo.Tensor
 	conv         *convnetgo.Convolution
