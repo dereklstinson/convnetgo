@@ -11,12 +11,10 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor, alpha, beta float32) {
 		go func(yn int) {
 			for yc := 0; yc < y.dims[1]; yc++ { // output feature maps for w and y
 
-				sh := -c.padding[0]
-
 				var wn, xn, xc int
 				xn = yn
 				wn = yc
-
+				sh := -c.padding[0]
 				for yh := 0; yh < y.dims[2]; yh, sh = yh+1, sh+c.stride[0] { //output dimsw
 					sw := -c.padding[1]
 					for yw := 0; yw < y.dims[3]; yw, sw = yw+1, sw+c.stride[1] { //output dim2
@@ -35,7 +33,8 @@ func (c *Convolution) forwardNCHW4d(x, w, wb, y *Tensor, alpha, beta float32) {
 										xw = sw + (ww * dilw)
 
 										if xw >= 0 && xw < x.dims[3] {
-											adder += x.f32data[(x.stride[0]*xn)+(x.stride[1]*xc)+(x.stride[2]*xh)+x.stride[3]*xw] * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wc)+(w.stride[2]*wh)+(w.stride[3]*ww)]
+											adder += x.f32data[(x.stride[0]*xn)+(x.stride[1]*xc)+(x.stride[2]*xh)+x.stride[3]*xw] *
+												w.f32data[(w.stride[0]*wn)+(w.stride[1]*wc)+(w.stride[2]*wh)+(w.stride[3]*ww)]
 										}
 									}
 
@@ -116,8 +115,14 @@ func (c *Convolution) backwardfilterNCHW4d(x, dw, dwb, dy *Tensor) {
 
 			}
 			mux.Lock()
-			dw.Add(dw, dwzclone, 1, 1, 0)
-			dwb.Add(dwb, dbclone, 1, 1, 0)
+			err = dw.Add(dw, dwzclone, 1, 1, 0)
+			if err != nil {
+				panic(err)
+			}
+			err = dwb.Add(dwb, dbclone, 1, 1, 0)
+			if err != nil {
+				panic(err)
+			}
 			mux.Unlock()
 			wg.Done()
 		}(yn)
@@ -151,7 +156,8 @@ func (c *Convolution) backwarddataNCHW4d(dx, w, dy *Tensor) {
 									for ww := 0; ww < w.dims[3]; ww++ { // w dim1
 										xw = sw + (ww * dilw)
 										if xw >= 0 && xw < dx.dims[3] {
-											dx.f32data[(dx.stride[0]*xn)+(dx.stride[1]*xc)+(dx.stride[2]*xh)+(dx.stride[3]*xw)] += grad * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wc)+(w.stride[2]*wh)+(w.stride[3]*ww)]
+											dx.f32data[(dx.stride[0]*xn)+(dx.stride[1]*xc)+(dx.stride[2]*xh)+(dx.stride[3]*xw)] +=
+												grad * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wc)+(w.stride[2]*wh)+(w.stride[3]*ww)]
 										}
 									}
 

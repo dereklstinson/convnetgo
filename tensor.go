@@ -63,6 +63,19 @@ func (t *Tensor) Average() float32 {
 	return adder / (float32)(len(t.f32data))
 }
 
+//AddAtoT does is t=t+(alpha1*A)
+func (t *Tensor) AddAtoT(A *Tensor, alpha1 float32) error {
+	if len(t.f32data) != len(A.f32data) {
+		return errors.New("(t *Tensor)Add length of t, A, B data not equal")
+	}
+
+	for i := range t.f32data {
+		t.f32data[i] += (A.f32data[i] * alpha1)
+	}
+
+	return nil
+}
+
 //Add does a t[i]=t[i]*beta + A[i]*alpha1 +B[i]*alpha2
 func (t *Tensor) Add(A, B *Tensor, alpha1, alpha2, beta float32) error {
 	if len(t.f32data) != len(A.f32data) || len(t.f32data) != len(B.f32data) {

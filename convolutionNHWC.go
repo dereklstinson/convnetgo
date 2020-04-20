@@ -41,8 +41,8 @@ func (c *Convolution) forwardNHWC4d(x, w, wb, y *Tensor, alpha, beta float32) {
 									if xw >= 0 && xw < x.dims[2] {
 
 										for wc := 0; wc < w.dims[3]; wc++ {
-											adder += x.f32data[(x.stride[0]*xn)+(x.stride[1]*xh)+(x.stride[2]*xw)+wc] * //wc and xc are the same
-												w.f32data[(w.stride[0]*wn)+(w.stride[1]*wh)+(w.stride[2]*ww)+wc]
+											adder += x.f32data[(x.stride[0]*xn)+(x.stride[1]*xh)+(x.stride[2]*xw)+(x.stride[3]*wc)] * //wc and xc are the same
+												w.f32data[(w.stride[0]*wn)+(w.stride[1]*wh)+(w.stride[2]*ww)+(w.stride[3]*wc)]
 										}
 									}
 
@@ -101,8 +101,8 @@ func (c *Convolution) backwardfilterNHWC4d(x, dw, dwb, dy *Tensor) {
 									xw = sw + (ww * dilw)
 									if xw >= 0 && xw < x.dims[2] {
 										for wc := 0; wc < dw.dims[3]; wc++ {
-											dwzclone.f32data[(dw.stride[0]*wn)+(dw.stride[1]*wh)+(dw.stride[2]*ww)+wc] +=
-												grad * x.f32data[(x.stride[0]*xn)+(x.stride[1]*xh)+(x.stride[2]*xw)+wc]
+											dwzclone.f32data[(dw.stride[0]*wn)+(dw.stride[1]*wh)+(dw.stride[2]*ww)+(dw.stride[3]*wc)] +=
+												grad * x.f32data[(x.stride[0]*xn)+(x.stride[1]*xh)+(x.stride[2]*xw)+(x.stride[3]*wc)]
 										}
 
 									}
@@ -142,6 +142,8 @@ func (c *Convolution) backwarddatatNHWC4d(dx, w, dy *Tensor) {
 	for yn := 0; yn < dy.dims[0]; yn++ { //x and y output batch
 		wg.Add(1)
 		go func(yn int) {
+			dilh := c.dilation[0]
+			dilw := c.dilation[1]
 			sh := -c.padding[0]
 			for yh := 0; yh < dy.dims[1]; yh, sh = yh+1, sh+c.stride[0] { //output dims1
 				sw := -c.padding[1]
@@ -149,8 +151,6 @@ func (c *Convolution) backwarddatatNHWC4d(dx, w, dy *Tensor) {
 					for yc := 0; yc < dy.dims[3]; yc++ { //wn == yc so the number of feature maps equals the size of the output channel.
 						//	wg.Add(1)
 						//	go func(yn, yh, yw, yc, sh, sw int) {
-						dilh := c.dilation[0]
-						dilw := c.dilation[1]
 						xn := yn
 						wn := yc
 						var grad = dy.Get([]int{yn, yh, yw, yc})
@@ -166,8 +166,8 @@ func (c *Convolution) backwarddatatNHWC4d(dx, w, dy *Tensor) {
 									if xw >= 0 && xw < dx.dims[2] {
 										//	mux.Lock()
 										for wc := 0; wc < w.dims[3]; wc++ {
-											dx.f32data[(dx.stride[0]*xn)+(dx.stride[1]*xh)+(dx.stride[2]*xw)+wc] +=
-												grad * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wh)+(w.stride[2]*ww)+wc]
+											dx.f32data[(dx.stride[0]*xn)+(dx.stride[1]*xh)+(dx.stride[2]*xw)+(dx.stride[3]*wc)] +=
+												grad * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wh)+(w.stride[2]*ww)+(w.stride[3]*wc)]
 										}
 										//	mux.Unlock()
 									}

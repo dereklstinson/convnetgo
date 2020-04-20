@@ -2,6 +2,7 @@ package convnetgo
 
 import (
 	"errors"
+
 	"sync"
 )
 
@@ -225,7 +226,9 @@ func (l *LeakyRelu) Backward(x, dx, dy *Tensor, alpha, beta float32) (err error)
 		wg.Add(1)
 		batchoffset := i * batchstride
 		go func(batchoffset, nbatchelements int) {
+
 			for j := 0; j < nbatchelements; j++ {
+
 				if x.f32data[batchoffset+j] < 0 {
 					dx.f32data[batchoffset+j] = dy.f32data[batchoffset+j] * l.negcoef
 				} else {

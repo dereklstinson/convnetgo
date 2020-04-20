@@ -109,7 +109,7 @@ func (c *Convolution) BackwardData(dx, w, dy *Tensor, alpha, beta float32) (err 
 	case false:
 		switch len(dx.dims) {
 		case 4:
-			c.backwarddataNCHW4d(dx, w, dy)
+			c.backwarddatatgeneric(dx, w, dy)
 		default:
 			return errors.New("Unsupported Number of Tensor Dims")
 		}
@@ -150,7 +150,7 @@ func (c *Convolution) BackwardFilter(x, dw, db, dy *Tensor, alpha, beta float32)
 	case false:
 		switch len(x.dims) {
 		case 4:
-			c.backwardfilterNCHW4d(x, dw, db, dy)
+			c.backwardfiltergeneric(x, dw, db, dy)
 		default:
 			return errors.New("Unsupported Number of Tensor Dims")
 		}
@@ -183,7 +183,7 @@ func (c *Convolution) Forward(x, w, wb, y *Tensor, alpha, beta float32) (err err
 	} else {
 		switch len(x.dims) {
 		case 4:
-			c.forwardNCHW4d(x, w, wb, y, alpha, beta)
+			c.forward4dgeneric(x, w, wb, y, alpha, beta)
 		default:
 			return errors.New("Unsupported Number of Tensor Dims")
 		}
