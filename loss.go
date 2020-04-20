@@ -2,6 +2,7 @@ package convnetgo
 
 import (
 	"errors"
+
 	"math"
 )
 
@@ -18,25 +19,28 @@ func SoftMaxForward(x, y *Tensor, alpha, beta float32) (err error) {
 	stride := make([]int, len(x.stride))
 	copy(dims, x.dims)
 	copy(stride, x.stride)
+
 	if !x.nhwc {
 
 		dims[len(x.dims)-1] = x.dims[1]
 		stride[len(x.stride)-1] = x.stride[1]
-		for i := 1; i < len(dims)-1; i++ {
-			dims[i] = x.dims[i+1]
-			stride[i] = x.stride[i+1]
+		for i := 2; i < len(dims); i++ {
+			dims[i-1] = x.dims[i]
+			stride[i-1] = x.stride[i]
 		}
 	}
+
 	for i := 0; i < dims[0]; i++ {
 		for j := 0; j < dims[1]; j++ {
 			for k := 0; k < dims[2]; k++ {
 				var denom float64
 				for l := 0; l < dims[3]; l++ {
-					denom += math.Exp(float64(x.f32data[i*stride[0]+j*stride[1]+k*stride[2]+stride[3]*l]))
+					denom += math.Exp(float64(x.f32data[(i*stride[0])+(j*stride[1])+(k*stride[2])+(stride[3]*l)]))
 				}
+				//fmt.Println(denom)
 				for l := 0; l < dims[3]; l++ {
 					y.f32data[i*stride[0]+j*stride[1]+k*stride[2]+(stride[3]*l)] =
-						float32(math.Exp(float64(x.f32data[i*stride[0]+j*stride[1]+k*stride[2]+stride[3]*l])) / denom)
+						float32(math.Exp(float64(x.f32data[(i*stride[0])+(j*stride[1])+(k*stride[2])+(stride[3]*l)])) / denom)
 				}
 			}
 		}

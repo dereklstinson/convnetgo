@@ -90,9 +90,11 @@ func (a *Adam) UpdateWeights(gsum, xsum, dw, w *Tensor, multithreaded bool) erro
 	for i := range dw.f32data {
 
 		gsum.f32data[i] = (a.beta1 * gsum.f32data[i]) + ((1.0 - a.beta1) * dw.f32data[i])
+		gsumt := gsum.f32data[i] / denomb1
 		xsum.f32data[i] = (a.beta2 * xsum.f32data[i]) + ((1.0 - a.beta2) * dw.f32data[i] * dw.f32data[i])
-		w.f32data[i] += -((gsum.f32data[i] * a.rate) / denomb1) /
-			((float32)(math.Sqrt((float64)(xsum.f32data[i]/denomb2))) + a.eps)
+		xsumt := xsum.f32data[i] / denomb2
+		w.f32data[i] += -(a.rate * gsumt) / ((float32)(math.Sqrt((float64)(xsumt))) + a.eps)
+
 	}
 
 	return nil
@@ -105,11 +107,11 @@ func l1l2Regularization(decay1, decay2, batch float32, w, dw []float32) (l1, l2 
 		l2 += (w[i] * w[i] * decay2) / 2
 
 		if w[i] > 0 {
-			grad1 = 1
+			grad1 = decay1
 		} else {
-			grad1 = -1
+			grad1 = -decay1
 		}
-		grad2 = w[i] * decay1
+		grad2 = w[i] * decay2
 
 		dw[i] = (dw[i] + grad1 + grad2) / batch
 	}
