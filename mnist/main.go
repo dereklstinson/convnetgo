@@ -30,8 +30,8 @@ func main() {
 	ti, tl, tti, ttl := getmnistdata([]string{mnisttrainimagepath, mnisttrainlabelpath, mnisttestimagepath, mnisttestlabelpath})
 	fmt.Println(len(ti), len(tl), len(tti), len(ttl))
 	//Going to test the speed of several different batchsizes.
-	batchsizes := []int{5, 10, 15, 20, 50, 100, 200, 1000}
-	nepochs := 3 // will manually find the average of 3 epochs
+	batchsizes := []int{10, 20, 40, 50, 100, 200}
+	nepochs := 1 // will manually find the average of 3 epochs
 	for _, bs := range batchsizes {
 		batchsize := bs
 		rate := float32(.001)

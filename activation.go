@@ -129,15 +129,6 @@ func (r *Relu) Backward(x, dx, dy *Tensor, alpha, beta float32) (err error) {
 	}
 	wg.Wait()
 	return nil
-	//	for i := range dy.f32data {
-	//		if x.f32data[i] < 0 {
-	//			dx.f32data[i] = 0
-	//		} else {
-	//			dx.f32data[i] = dy.f32data[i]
-	//		}
-	//	}
-	//	return nil
-
 }
 
 //LeakyRelu is a struct that holds the neg and pos coef
@@ -176,8 +167,8 @@ func (l *LeakyRelu) Get() (negcoef, poscoef float32) {
 
 //Forward does the leaky relu activation
 //alpha and beta have no function right now
+//Set to default alpha=1,beta=0
 func (l *LeakyRelu) Forward(x, y *Tensor, alpha, beta float32) (err error) {
-
 	if len(x.f32data) != len(y.f32data) {
 		return errors.New("LeakyReluForward() Volume of x != Volume of y")
 	}
@@ -201,19 +192,11 @@ func (l *LeakyRelu) Forward(x, y *Tensor, alpha, beta float32) (err error) {
 	}
 	wg.Wait()
 	return nil
-	//	for i := range x.f32data {
-	//		if x.f32data[i] < 0 {
-	//			y.f32data[i] = x.f32data[i] * l.negcoef
-	//		} else {
-	//			y.f32data[i] = x.f32data[i] * l.poscoef
-	//		}
-	//
-	//	}
-	//	return nil
 }
 
 //Backward does the backward relu activation
 //alpha and beta have no function right now
+//Set to default alpha=1,beta=0
 func (l *LeakyRelu) Backward(x, dx, dy *Tensor, alpha, beta float32) (err error) {
 	if len(x.f32data) != len(dy.f32data) || len(x.f32data) != len(dx.f32data) {
 		return errors.New("LeakyReluForward()  Volume of x != Volume of dy ||  Volume of x != Volume of dx")
@@ -226,9 +209,7 @@ func (l *LeakyRelu) Backward(x, dx, dy *Tensor, alpha, beta float32) (err error)
 		wg.Add(1)
 		batchoffset := i * batchstride
 		go func(batchoffset, nbatchelements int) {
-
 			for j := 0; j < nbatchelements; j++ {
-
 				if x.f32data[batchoffset+j] < 0 {
 					dx.f32data[batchoffset+j] = dy.f32data[batchoffset+j] * l.negcoef
 				} else {
@@ -240,13 +221,4 @@ func (l *LeakyRelu) Backward(x, dx, dy *Tensor, alpha, beta float32) (err error)
 	}
 	wg.Wait()
 	return nil
-	//	for i := range x.f32data {
-	//		if x.f32data[i] < 0 {
-	//			dx.f32data[i] = dy.f32data[i] * l.negcoef
-	//		} else {
-	//			dx.f32data[i] = dy.f32data[i] * l.poscoef
-	//		}
-	//
-	//	}
-	//	return nil
 }

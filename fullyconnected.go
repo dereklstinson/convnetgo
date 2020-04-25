@@ -13,7 +13,8 @@ import (
 //
 //Batches are performed in parrallel
 //
-//alpha and beta have no functionality.
+//alpha and beta have no functionality at this point.
+//Set alpha to 1 and beta to 0 to not run into any future issues.
 func FullyConnectedForward(x, w, b, y *Tensor, alpha, beta float32) error {
 	nvol := findvolume(w.dims[1:])
 	xvol := findvolume(x.dims[1:])
@@ -44,7 +45,6 @@ func FullyConnectedForward(x, w, b, y *Tensor, alpha, beta float32) error {
 				neuronoffset := w.stride[0] * j
 				var adder float32
 				for k := 0; k < xvol; k++ {
-
 					adder += w.f32data[neuronoffset+k] * x.f32data[xboffset+k]
 				}
 
@@ -52,7 +52,6 @@ func FullyConnectedForward(x, w, b, y *Tensor, alpha, beta float32) error {
 			}
 			wg.Done()
 		}(i)
-
 	}
 	wg.Wait()
 	return nil
@@ -99,11 +98,9 @@ func FullyConnectedBackwardData(dx, w, dy *Tensor, alpha, beta float32) error {
 			}
 			wg.Done()
 		}(i)
-
 	}
 	wg.Wait()
 	return nil
-
 }
 
 //FullyConnectedBackwardFilter does the backward filter operation for a fully connected neural network
