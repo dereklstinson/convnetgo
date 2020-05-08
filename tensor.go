@@ -131,6 +131,33 @@ func (t *Tensor) Stride() (stride []int) {
 	return stride
 }
 
+func findspatialdims(t *Tensor) (spatialdims []int) {
+	spatialdims = make([]int, len(t.dims)-2)
+	if t.nhwc {
+		for i := range spatialdims {
+			spatialdims[i] = t.dims[i+1]
+		}
+	} else {
+		for i := range spatialdims {
+			spatialdims[i] = t.dims[i+2]
+		}
+	}
+	return spatialdims
+}
+func findoutputspacialdims(isdim, ksdim, pad, stride, dilation []int) (osd []int) {
+	osd = make([]int, len(isdim))
+	for i := range osd {
+		osd[i] = findoutputdim(isdim[i], ksdim[i], stride[i], pad[i], dilation[i])
+	}
+	return osd
+}
+func getchannellength(t *Tensor) int {
+	if t.nhwc {
+		return t.dims[len(t.dims)-1]
+	}
+	return t.dims[1]
+}
+
 //CreateRandomizedWeightsTensor creates a tensor with randomized weights.
 func CreateRandomizedWeightsTensor(wdims, xdims []int, NHWC bool) (*Tensor, error) {
 	t, err := CreateTensor(wdims, NHWC)

@@ -40,6 +40,59 @@ func (c *Convolution) forwardNHWC4d(x, w, wb, y *Tensor, alpha, beta float32) {
 	}
 	wg.Wait()
 }
+func (c *Convolution) convnhwc4dwithwindow(
+	x, w, wb, y *Tensor,
+	alpha, beta float32) {
+	var wg sync.WaitGroup
+	for yn := 0; yn < x.dims[0]; yn++ { //x and y output batch
+		wg.Add(1)
+		go func(yn int) {
+			sh := -c.padding[0]
+			for yh := 0; yh < y.dims[1]; yh++ { //output dims1
+				sw := -c.padding[1]
+				for yw := 0; yw < y.dims[2]; yw++ { //output dim2
+					for yc := 0; yc < y.dims[3]; yc++ {
+						//wn == yc so the number of feature maps equals the size of the output channel.
+						dh, dw, xn, wn := c.dilation[0], c.dilation[1], yn, yc
+						adder := c.fwdwinnhwc4d(x, w, sh, sw, dh, dw, xn, wn)
+						adder += wb.f32data[wn] //add the bias
+						y.Set(adder, []int{yn, yh, yw, yc})
+					}
+					sw += c.stride[1]
+				}
+				sh += c.stride[0]
+			}
+			wg.Done()
+		}(yn)
+	}
+	wg.Wait()
+}
+func (c *Convolution) fwdwinnhwc4d(x, w *Tensor,
+	sh, sw, dh, dw int,
+	xn, wn int) (adder float32) {
+	for wh := 0; wh < w.dims[1]; wh++ { //w input feature maps for x and w
+		xh := sh + (wh * dh)
+		if xh >= 0 && xh < x.dims[1] {
+			for ww := 0; ww < w.dims[2]; ww++ {
+				xw := sw + (ww * dw)
+				if xw >= 0 && xw < x.dims[2] {
+					for wc := 0; wc < w.dims[3]; wc++ {
+						adder += x.f32data[(x.stride[0]*xn)+
+							(x.stride[1]*xh)+
+							(x.stride[2]*xw)+
+							(x.stride[3]*wc)] *
+							w.f32data[(w.stride[0]*wn)+
+								(w.stride[1]*wh)+
+								(w.stride[2]*ww)+
+								(w.stride[3]*wc)]
+					}
+				}
+			}
+		}
+	}
+
+	return adder
+}
 func (c *Convolution) backwardfilterNHWC4d(x, dw, dwb, dy *Tensor) {
 	var wg sync.WaitGroup
 	var mux sync.RWMutex
@@ -114,13 +167,13 @@ func (c *Convolution) backwarddatatNHWC4d(dx, w, dy *Tensor) {
 					for yc := 0; yc < dy.dims[3]; yc++ { //wn == yc so the number of feature maps equals the size of the output channel.
 						xn, wn := yn, yc
 						var grad = dy.Get([]int{yn, yh, yw, yc})
-						for wh := 0; wh < w.dims[1]; wh++ { //w input feature maps for x and w
+						for wh := 0; wh < w.dims[1]; wh++ { // w height
 							xh := sh + (wh * dilh)          // This tells the height position on the x tensor
 							if xh >= 0 && xh < dx.dims[1] { //this checks if it is in bounds of the x tensor
 								for ww := 0; ww < w.dims[2]; ww++ {
 									xw := sw + (ww * dilw)          //This is the width position on the x tensor
 									if xw >= 0 && xw < dx.dims[2] { //check if xw is in bounds with the x tensor
-										for wc := 0; wc < w.dims[3]; wc++ {
+										for wc := 0; wc < w.dims[3]; wc++ { //input feature maps and weight feature maps
 											dx.f32data[(dx.stride[0]*xn)+(dx.stride[1]*xh)+(dx.stride[2]*xw)+(dx.stride[3]*wc)] +=
 												grad * w.f32data[(w.stride[0]*wn)+(w.stride[1]*wh)+(w.stride[2]*ww)+(w.stride[3]*wc)]
 										}

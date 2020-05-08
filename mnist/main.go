@@ -14,10 +14,10 @@ import (
 	"github.com/dereklstinson/convnetgo"
 )
 
-const mnisttrainimagepath = "/home/ubuntu/go/src/github.com/dereklstinson/GoCuNets/testing/mnist/files/train-images.idx3-ubyte"
-const mnisttrainlabelpath = "/home/ubuntu/go/src/github.com/dereklstinson/GoCuNets/testing/mnist/files/train-labels.idx1-ubyte"
-const mnisttestimagepath = "/home/ubuntu/go/src/github.com/dereklstinson/GoCuNets/testing/mnist/files/t10k-images.idx3-ubyte"
-const mnisttestlabelpath = "/home/ubuntu/go/src/github.com/dereklstinson/GoCuNets/testing/mnist/files/t10k-labels.idx1-ubyte"
+const mnisttrainimagepath = "/home/ubuntu/go/src/github.com/dereklstinson/gocunets/testing/mnist/files/train-images.idx3-ubyte"
+const mnisttrainlabelpath = "/home/ubuntu/go/src/github.com/dereklstinson/gocunets/testing/mnist/files/train-labels.idx1-ubyte"
+const mnisttestimagepath = "/home/ubuntu/go/src/github.com/dereklstinson/gocunets/testing/mnist/files/t10k-images.idx3-ubyte"
+const mnisttestlabelpath = "/home/ubuntu/go/src/github.com/dereklstinson/gocunets/testing/mnist/files/t10k-labels.idx1-ubyte"
 const (
 	imageMagic = 0x00000803
 	labelMagic = 0x00000801
@@ -30,8 +30,8 @@ func main() {
 	ti, tl, tti, ttl := getmnistdata([]string{mnisttrainimagepath, mnisttrainlabelpath, mnisttestimagepath, mnisttestlabelpath})
 	fmt.Println(len(ti), len(tl), len(tti), len(ttl))
 	//Going to test the speed of several different batchsizes.
-	batchsizes := []int{10, 20, 40, 50, 100, 200}
-	nepochs := 1 // will manually find the average of 3 epochs
+	batchsizes := []int{40}
+	nepochs := 5 // will manually find the average of 3 epochs
 	for _, bs := range batchsizes {
 		batchsize := bs
 		rate := float32(.001)
@@ -119,7 +119,20 @@ func main() {
 		updaters := make([]*trainer, 0)
 		wdims := inputlayerweights
 		for i := 0; i < 3; i++ {
-			layer := createconvlayer(previousinput, dpreviousinput, wdims, bdims, []int{3, 3}, []int{2, 2}, []int{2, 2}, NHWC)
+			if i == 0 {
+				layer := createconvlayer(previousinput, dpreviousinput, wdims, bdims, []int{6, 6}, []int{2, 2}, []int{3, 3}, NHWC)
+				layers = append(layers, layer)
+				updater := createtrainer(layer.w, layer.dw, decay1, decay2, rate)
+				updaters = append(updaters, updater)
+				updater = createtrainer(layer.b, layer.db, decay1, decay2, rate)
+				updaters = append(updaters, updater)
+				layer = createactlayer(layer.y, layer.dy, NHWC)
+				layers = append(layers, layer)
+				previousinput = layer.y
+				dpreviousinput = layer.dy
+				wdims = otherlayerdims
+			}
+			layer := createconvlayer(previousinput, dpreviousinput, wdims, bdims, []int{4, 4}, []int{2, 2}, []int{3, 3}, NHWC)
 			layers = append(layers, layer)
 			updater := createtrainer(layer.w, layer.dw, decay1, decay2, rate)
 			updaters = append(updaters, updater)

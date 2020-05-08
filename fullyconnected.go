@@ -17,26 +17,21 @@ import (
 //Set alpha to 1 and beta to 0 to not run into any future issues.
 func FullyConnectedForward(x, w, b, y *Tensor, alpha, beta float32) error {
 	nvol := findvolume(w.dims[1:])
-	xvol := findvolume(x.dims[1:])
-
-	if nvol != xvol {
+	xbatchstride := x.stride[0]
+	ybatchstride := y.stride[0]
+	if nvol != xbatchstride {
 		return errors.New("neuron feature map vol != batch volume of input")
 	}
-
 	neurons := w.dims[0]
-	yvol := findvolume(y.dims[1:])
-	if yvol != neurons {
+	if ybatchstride != neurons {
 		return errors.New("Neuron outputs not matching y tensors volume")
 	}
 	bvol := findvolume(b.dims)
 	if bvol != neurons {
 		return errors.New("Bias size != to output/neuron size")
 	}
-	batchsize := x.dims[0]
-	xbatchstride := x.stride[0]
-	ybatchstride := y.stride[0]
 	var wg sync.WaitGroup
-	for i := 0; i < batchsize; i++ {
+	for i := 0; i < x.dims[0]; i++ {
 		wg.Add(1)
 		go func(i int) {
 			yoffset := ybatchstride * i
@@ -44,7 +39,7 @@ func FullyConnectedForward(x, w, b, y *Tensor, alpha, beta float32) error {
 			for j := 0; j < neurons; j++ {
 				neuronoffset := w.stride[0] * j
 				var adder float32
-				for k := 0; k < xvol; k++ {
+				for k := 0; k < xbatchstride; k++ {
 					adder += w.f32data[neuronoffset+k] * x.f32data[xboffset+k]
 				}
 
